@@ -4,6 +4,7 @@
 #include "operator.h"
 #include "expr_eval.h"
 #include "value.h"
+#include "group_key.h"
 
 #include <vector>
 #include <string>
@@ -57,7 +58,7 @@ public:
 
     const std::vector<std::string>& columnNames() const override;
 
-    // Helper for encoding composite key into a buffer
+    // Helper for encoding composite key into a buffer (forwards to encodeGroupKey)
     static void encodeKey(const std::vector<Value>& values, std::string& buf);
 
     // Helpers for updating aggregate state

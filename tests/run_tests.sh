@@ -64,6 +64,16 @@ if [ -x "./test_lexer" ]; then
     fi
 fi
 
+if [ -x "./test_sort" ]; then
+    echo "--- Running test_sort unit tests ---"
+    if ./test_sort; then
+        echo "[OK] test_sort passed"
+    else
+        echo "[FAIL] test_sort failed"
+        FAILED=1
+    fi
+fi
+
 # 3. Generate 100k-row test dataset and edge datasets
 DATA_100K="$DATA_DIR/data_100k.csv"
 if [ ! -f "$DATA_100K" ]; then
@@ -122,6 +132,11 @@ if [ -x "$ENGINE_BIN" ]; then
         echo "[OK] $desc (exit $code)"
     }
 
+    # Exit 1: Parse / Syntax errors
+    check_error "OFFSET without LIMIT syntax error" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t OFFSET 5\"" \
+        1 "unexpected token"
+
     # Exit 2: Semantic / SQL errors
     check_error "Unknown column" \
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT nonexistent_column FROM t\"" \
@@ -151,6 +166,30 @@ if [ -x "$ENGINE_BIN" ]; then
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t GROUP BY count(*)\"" \
         2 "aggregate functions are not allowed in GROUP BY"
 
+    check_error "ORDER BY unknown column" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY nonexistent_column\"" \
+        2 "unknown column"
+
+    check_error "ORDER BY 0 out of range" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY 0\"" \
+        2 "ORDER BY term out of range"
+
+    check_error "ORDER BY 99 out of range" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY 99\"" \
+        2 "ORDER BY term out of range"
+
+    check_error "SELECT DISTINCT with unselected ORDER BY" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT DISTINCT city FROM t ORDER BY id\"" \
+        2 "for SELECT DISTINCT, ORDER BY terms must appear in the select list"
+
+    check_error "ORDER BY bare column not in GROUP BY" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t GROUP BY city ORDER BY id\"" \
+        2 "must appear in the group by"
+
+    check_error "Aggregate in ORDER BY on non-aggregate query" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT 1 FROM t ORDER BY COUNT(*)\"" \
+        2 "misuse of aggregate function in ORDER BY"
+
     # Exit 3: Unsupported features
     check_error "GROUP BY ordinal" \
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t GROUP BY 1\"" \
@@ -172,14 +211,6 @@ if [ -x "$ENGINE_BIN" ]; then
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT t.id FROM t JOIN customers c ON t.id = c.id\"" \
         3 "not implemented yet: JOIN"
 
-    check_error "ORDER BY" \
-        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t ORDER BY city\"" \
-        3 "not implemented yet: ORDER BY"
-
-    check_error "DISTINCT" \
-        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT DISTINCT city FROM t\"" \
-        3 "not implemented yet: DISTINCT"
-
     # Exit 4: Runtime overflow / resource limits
     check_error "SUM 64-bit integer overflow" \
         "$ENGINE_BIN --table t='$DATA_DIR/big_values.csv' --sql \"SELECT SUM(val) FROM t\"" \
@@ -187,6 +218,10 @@ if [ -x "$ENGINE_BIN" ]; then
 
     check_error "Max groups limit exceeded (--max-groups)" \
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city, COUNT(*) FROM t GROUP BY city\" --max-groups 1" \
+        4 "maximum number of groups exceeded"
+
+    check_error "DISTINCT max groups limit exceeded (--max-groups)" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT DISTINCT city FROM t\" --max-groups 1" \
         4 "maximum number of groups exceeded"
 fi
 

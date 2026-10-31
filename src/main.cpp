@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
         }
 
         // Print header line
-        for (size_t i = 0; i < plan.output_headers.size(); ++i) {
+        for (size_t i = 0; i < plan.visible_width; ++i) {
             if (i > 0) std::putchar(',');
             printHeaderField(plan.output_headers[i]);
         }
@@ -117,7 +117,7 @@ int main(int argc, char* argv[]) {
 
         // Print rows
         while (plan.root->next(tuple)) {
-            for (size_t i = 0; i < tuple.values.size(); ++i) {
+            for (size_t i = 0; i < plan.visible_width; ++i) {
                 if (i > 0) std::putchar(',');
                 formatValue(tuple.values[i], stdout);
             }

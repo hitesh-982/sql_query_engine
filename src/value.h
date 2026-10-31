@@ -71,6 +71,11 @@ int compareIntAndDouble(long long i, double d);
 // Returns -1 if a < b, 0 if a == b, 1 if a > b
 int compareValues(Value a, Value b);
 
+// Compare two values with NULL handling according to SQLite ORDER BY rules:
+// NULL < numbers < strings.
+// Returns -1 if a < b, 0 if a == b, 1 if a > b
+int compareValuesWithNull(Value a, Value b);
+
 // Convert a CSV field to a Value based on inferred column type
 Value valueFromCsvField(std::string_view field, ColType colType);
 

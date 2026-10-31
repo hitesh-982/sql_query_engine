@@ -33,6 +33,23 @@ struct Plan {
     bool has_having = false;
     std::string having_sql;
 
+    // Distinct info
+    bool has_distinct = false;
+
+    // Sort info
+    bool has_sort = false;
+    struct SortTermPlan {
+        std::string sql;
+        bool descending = false;
+    };
+    std::vector<SortTermPlan> sort_terms;
+    bool sort_is_top_n = false;
+    long long sort_top_n = 0;
+
+    // Output projection dimensions
+    size_t visible_width = 0;
+    size_t hidden_columns_count = 0;
+
     void explain(FILE* out) const;
 };
 

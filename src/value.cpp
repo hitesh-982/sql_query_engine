@@ -200,6 +200,13 @@ int compareValues(Value a, Value b) {
     return 0;
 }
 
+int compareValuesWithNull(Value a, Value b) {
+    if (a.type == V_NULL && b.type == V_NULL) return 0;
+    if (a.type == V_NULL) return -1;
+    if (b.type == V_NULL) return 1;
+    return compareValues(a, b);
+}
+
 Value valueFromCsvField(std::string_view field, ColType colType) {
     if (isNull(field)) {
         return makeNull();

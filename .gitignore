@@ -5,6 +5,8 @@ sqlparse_sanitized
 test_lexer
 test_eval
 test_agg
+test_sort
 tests/data/
 __pycache__/
 *.pyc
+*.csv

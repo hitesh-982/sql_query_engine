@@ -2044,5 +2044,1171 @@
       "--sql",
       "SELECT city, COUNT(*) FROM t GROUP BY city LIMIT 0"
     ]
+  },
+  {
+    "name": "p6_row_order_id_desc",
+    "sql": "SELECT id FROM t ORDER BY id DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_id_asc",
+    "sql": "SELECT id FROM t ORDER BY id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_qty_asc_nulls_first",
+    "sql": "SELECT id, qty FROM t ORDER BY qty ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t ORDER BY qty ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_qty_desc_nulls_last",
+    "sql": "SELECT id, qty FROM t ORDER BY qty DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t ORDER BY qty DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_amount_asc_nulls_first",
+    "sql": "SELECT id, amount FROM t ORDER BY amount ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, amount FROM t ORDER BY amount ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_amount_desc_nulls_last",
+    "sql": "SELECT id, amount FROM t ORDER BY amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, amount FROM t ORDER BY amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_city_asc_nulls_first",
+    "sql": "SELECT id, city FROM t ORDER BY city ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city FROM t ORDER BY city ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_city_desc_nulls_last",
+    "sql": "SELECT id, city FROM t ORDER BY city DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city FROM t ORDER BY city DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_note_quoted_asc",
+    "sql": "SELECT id, note FROM t ORDER BY note ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, note FROM t ORDER BY note ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_note_quoted_desc",
+    "sql": "SELECT id, note FROM t ORDER BY note DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, note FROM t ORDER BY note DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_note_id",
+    "sql": "SELECT id, note FROM t ORDER BY note ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, note FROM t ORDER BY note ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_region_asc_amount_desc_id",
+    "sql": "SELECT id, region, amount FROM t ORDER BY region ASC, amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, region, amount FROM t ORDER BY region ASC, amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_region_desc_qty_asc_id",
+    "sql": "SELECT id, region, qty FROM t ORDER BY region DESC, qty ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, region, qty FROM t ORDER BY region DESC, qty ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_city_asc_qty_desc_amount_desc_id",
+    "sql": "SELECT id, city, qty, amount FROM t ORDER BY city ASC, qty DESC, amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city, qty, amount FROM t ORDER BY city ASC, qty DESC, amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_mixed_qty_amount_region_id",
+    "sql": "SELECT id, qty, amount, region FROM t ORDER BY qty DESC, amount ASC, region DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty, amount, region FROM t ORDER BY qty DESC, amount ASC, region DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_amount",
+    "sql": "SELECT id, city FROM t ORDER BY amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city FROM t ORDER BY amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_qty",
+    "sql": "SELECT id, region FROM t ORDER BY qty ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, region FROM t ORDER BY qty ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_note",
+    "sql": "SELECT id FROM t ORDER BY note ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY note ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_multi",
+    "sql": "SELECT city FROM t ORDER BY region ASC, amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT city FROM t ORDER BY region ASC, amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_expr",
+    "sql": "SELECT id FROM t ORDER BY qty * amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY qty * amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_unselected_both",
+    "sql": "SELECT city FROM t ORDER BY amount ASC, qty DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT city FROM t ORDER BY amount ASC, qty DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_alias_single",
+    "sql": "SELECT id AS my_id, amount FROM t ORDER BY my_id DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id AS my_id, amount FROM t ORDER BY my_id DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_alias_multi",
+    "sql": "SELECT region AS r, amount AS a, id AS i FROM t ORDER BY r ASC, a DESC, i ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region AS r, amount AS a, id AS i FROM t ORDER BY r ASC, a DESC, i ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_alias_case_insensitive",
+    "sql": "SELECT city AS CityAlias, id FROM t ORDER BY cityalias ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT city AS CityAlias, id FROM t ORDER BY cityalias ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_ordinal_1",
+    "sql": "SELECT id, city FROM t ORDER BY 1 DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city FROM t ORDER BY 1 DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_ordinal_2_then_1",
+    "sql": "SELECT region, id FROM t ORDER BY 1 ASC, 2 DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, id FROM t ORDER BY 1 ASC, 2 DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_ordinal_multi",
+    "sql": "SELECT city, region, amount, id FROM t ORDER BY 2 ASC, 3 DESC, 4 ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT city, region, amount, id FROM t ORDER BY 2 ASC, 3 DESC, 4 ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_ordinal_with_alias",
+    "sql": "SELECT id AS my_id, city AS my_city FROM t ORDER BY 1 DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id AS my_id, city AS my_city FROM t ORDER BY 1 DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_qty_mul_amount",
+    "sql": "SELECT id, qty, amount FROM t ORDER BY qty * amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty, amount FROM t ORDER BY qty * amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_id_mod_7",
+    "sql": "SELECT id FROM t ORDER BY id / 7 ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id / 7 ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_arith_complex",
+    "sql": "SELECT id, qty, amount FROM t ORDER BY (id + qty) * 2 ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty, amount FROM t ORDER BY (id + qty) * 2 ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_struct_match_expr",
+    "sql": "SELECT qty * amount AS x, id FROM t ORDER BY qty * amount ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty * amount AS x, id FROM t ORDER BY qty * amount ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_struct_match_expr_desc",
+    "sql": "SELECT qty * amount AS x, id FROM t ORDER BY qty * amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty * amount AS x, id FROM t ORDER BY qty * amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_ordinal_1",
+    "sql": "SELECT qty * amount AS x, id FROM t ORDER BY 1 DESC, 2 ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty * amount AS x, id FROM t ORDER BY 1 DESC, 2 ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_alias",
+    "sql": "SELECT qty * amount AS x, id FROM t ORDER BY x DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty * amount AS x, id FROM t ORDER BY x DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_expr_plus_lit",
+    "sql": "SELECT id, qty FROM t ORDER BY qty + 10 ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t ORDER BY qty + 10 ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_select_star",
+    "sql": "SELECT * FROM t ORDER BY id DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT * FROM t ORDER BY id DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_select_table_star",
+    "sql": "SELECT t.* FROM t ORDER BY id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT t.* FROM t ORDER BY id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_star_column_in_star",
+    "sql": "SELECT * FROM t ORDER BY amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT * FROM t ORDER BY amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_int",
+    "sql": "SELECT id, city, qty FROM t WHERE qty > 10 ORDER BY qty DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city, qty FROM t WHERE qty > 10 ORDER BY qty DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_float",
+    "sql": "SELECT id, amount FROM t WHERE amount < 50.0 ORDER BY amount ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, amount FROM t WHERE amount < 50.0 ORDER BY amount ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_like",
+    "sql": "SELECT id, city, note FROM t WHERE note LIKE '%note%' ORDER BY city ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city, note FROM t WHERE note LIKE '%note%' ORDER BY city ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_in",
+    "sql": "SELECT id, region FROM t WHERE region IN ('East', 'West') ORDER BY region DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, region FROM t WHERE region IN ('East', 'West') ORDER BY region DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_null",
+    "sql": "SELECT id, qty FROM t WHERE qty IS NULL ORDER BY id DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t WHERE qty IS NULL ORDER BY id DESC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_not_null",
+    "sql": "SELECT id, qty FROM t WHERE qty IS NOT NULL ORDER BY qty ASC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t WHERE qty IS NOT NULL ORDER BY qty ASC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_row_order_where_complex",
+    "sql": "SELECT id, city, amount FROM t WHERE (qty > 5 OR region = 'East') AND amount IS NOT NULL ORDER BY amount DESC, id ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city, amount FROM t WHERE (qty > 5 OR region = 'East') AND amount IS NOT NULL ORDER BY amount DESC, id ASC"
+    ]
+  },
+  {
+    "name": "p6_limit_10",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 10"
+    ]
+  },
+  {
+    "name": "p6_limit_1",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 1",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 1"
+    ]
+  },
+  {
+    "name": "p6_limit_0",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 0",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 0"
+    ]
+  },
+  {
+    "name": "p6_limit_large",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 999999",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 999999"
+    ]
+  },
+  {
+    "name": "p6_limit_offset_5_10",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 10 OFFSET 5",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 10 OFFSET 5"
+    ]
+  },
+  {
+    "name": "p6_limit_offset_beyond",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 10 OFFSET 999999",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 10 OFFSET 999999"
+    ]
+  },
+  {
+    "name": "p6_limit_large_offset",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 999999 OFFSET 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 999999 OFFSET 10"
+    ]
+  },
+  {
+    "name": "p6_limit_without_order_by",
+    "sql": "SELECT id FROM t LIMIT 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t LIMIT 10"
+    ]
+  },
+  {
+    "name": "p6_limit_offset_without_order_by",
+    "sql": "SELECT id FROM t LIMIT 5 OFFSET 5",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t LIMIT 5 OFFSET 5"
+    ]
+  },
+  {
+    "name": "p6_where_order_limit",
+    "sql": "SELECT id, amount FROM t WHERE amount > 100.0 ORDER BY amount DESC, id ASC LIMIT 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, amount FROM t WHERE amount > 100.0 ORDER BY amount DESC, id ASC LIMIT 10"
+    ]
+  },
+  {
+    "name": "p6_where_order_limit_offset",
+    "sql": "SELECT id, city, qty FROM t WHERE qty IS NOT NULL ORDER BY qty DESC, id ASC LIMIT 5 OFFSET 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, city, qty FROM t WHERE qty IS NOT NULL ORDER BY qty DESC, id ASC LIMIT 5 OFFSET 10"
+    ]
+  },
+  {
+    "name": "p6_topn_multi_key_limit",
+    "sql": "SELECT id, region, amount FROM t ORDER BY region ASC, amount DESC, id ASC LIMIT 15",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, region, amount FROM t ORDER BY region ASC, amount DESC, id ASC LIMIT 15"
+    ]
+  },
+  {
+    "name": "p6_topn_unselected_key_limit",
+    "sql": "SELECT id FROM t ORDER BY amount DESC, id ASC LIMIT 10",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY amount DESC, id ASC LIMIT 10"
+    ]
+  },
+  {
+    "name": "p6_topn_desc_limit",
+    "sql": "SELECT id, qty FROM t ORDER BY qty DESC, id ASC LIMIT 8",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t ORDER BY qty DESC, id ASC LIMIT 8"
+    ]
+  },
+  {
+    "name": "p6_topn_asc_limit",
+    "sql": "SELECT id, qty FROM t ORDER BY qty ASC, id ASC LIMIT 8",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id, qty FROM t ORDER BY qty ASC, id ASC LIMIT 8"
+    ]
+  },
+  {
+    "name": "p6_topn_offset_limit_zero",
+    "sql": "SELECT id FROM t ORDER BY id ASC LIMIT 0 OFFSET 5",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT id FROM t ORDER BY id ASC LIMIT 0 OFFSET 5"
+    ]
+  },
+  {
+    "name": "p6_distinct_one_col_city",
+    "sql": "SELECT DISTINCT city FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT city FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_one_col_region",
+    "sql": "SELECT DISTINCT region FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_two_cols_region_qty",
+    "sql": "SELECT DISTINCT region, qty FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region, qty FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_two_cols_city_region",
+    "sql": "SELECT DISTINCT city, region FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT city, region FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_col_with_nulls_qty",
+    "sql": "SELECT DISTINCT qty FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT qty FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_col_with_nulls_amount",
+    "sql": "SELECT DISTINCT amount FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT amount FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_quoted_note",
+    "sql": "SELECT DISTINCT note FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT note FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_expr_qty_plus_1",
+    "sql": "SELECT DISTINCT qty + 1 FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT qty + 1 FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_expr_arith",
+    "sql": "SELECT DISTINCT id / 5 FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT id / 5 FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_select_star",
+    "sql": "SELECT DISTINCT * FROM t",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT * FROM t"
+    ]
+  },
+  {
+    "name": "p6_distinct_where",
+    "sql": "SELECT DISTINCT region FROM t WHERE amount > 50.0",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t WHERE amount > 50.0"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_selected_asc",
+    "sql": "SELECT DISTINCT region FROM t ORDER BY region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t ORDER BY region ASC"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_selected_desc",
+    "sql": "SELECT DISTINCT region FROM t ORDER BY region DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t ORDER BY region DESC"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_limit",
+    "sql": "SELECT DISTINCT region FROM t ORDER BY region ASC LIMIT 5",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t ORDER BY region ASC LIMIT 5"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_limit_offset",
+    "sql": "SELECT DISTINCT region FROM t ORDER BY region ASC LIMIT 3 OFFSET 2",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t ORDER BY region ASC LIMIT 3 OFFSET 2"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_ordinal",
+    "sql": "SELECT DISTINCT region FROM t ORDER BY 1 DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region FROM t ORDER BY 1 DESC"
+    ]
+  },
+  {
+    "name": "p6_distinct_order_alias",
+    "sql": "SELECT DISTINCT region AS reg FROM t ORDER BY reg ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT region AS reg FROM t ORDER BY reg ASC"
+    ]
+  },
+  {
+    "name": "p6_distinct_aggregate",
+    "sql": "SELECT DISTINCT COUNT(*) FROM t GROUP BY region",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT COUNT(*) FROM t GROUP BY region"
+    ]
+  },
+  {
+    "name": "p6_distinct_aggregate_sum",
+    "sql": "SELECT DISTINCT SUM(qty) FROM t GROUP BY region",
+    "ordered": false,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT SUM(qty) FROM t GROUP BY region"
+    ]
+  },
+  {
+    "name": "p6_agg_order_count_star_desc_key",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_count_star_asc_key",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) ASC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) ASC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_unselected_count",
+    "sql": "SELECT region FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_unselected_sum",
+    "sql": "SELECT region FROM t GROUP BY region ORDER BY SUM(qty) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region FROM t GROUP BY region ORDER BY SUM(qty) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_sum_qty_desc_key",
+    "sql": "SELECT region, SUM(qty) FROM t GROUP BY region ORDER BY SUM(qty) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, SUM(qty) FROM t GROUP BY region ORDER BY SUM(qty) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_min_max_key",
+    "sql": "SELECT region, MIN(qty), MAX(qty) FROM t GROUP BY region ORDER BY MIN(qty) ASC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, MIN(qty), MAX(qty) FROM t GROUP BY region ORDER BY MIN(qty) ASC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_alias_count",
+    "sql": "SELECT region, COUNT(*) AS cnt FROM t GROUP BY region ORDER BY cnt DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) AS cnt FROM t GROUP BY region ORDER BY cnt DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_alias_sum",
+    "sql": "SELECT region, SUM(qty) AS total_qty FROM t GROUP BY region ORDER BY total_qty ASC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, SUM(qty) AS total_qty FROM t GROUP BY region ORDER BY total_qty ASC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_ordinal_1_2",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY 2 DESC, 1 ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY 2 DESC, 1 ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_group_key_desc",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region DESC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region DESC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_group_key_with_null_group",
+    "sql": "SELECT qty, COUNT(*) FROM t GROUP BY qty ORDER BY qty ASC, COUNT(*) ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty, COUNT(*) FROM t GROUP BY qty ORDER BY qty ASC, COUNT(*) ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_group_key_with_null_group_desc",
+    "sql": "SELECT qty, COUNT(*) FROM t GROUP BY qty ORDER BY qty DESC, COUNT(*) ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT qty, COUNT(*) FROM t GROUP BY qty ORDER BY qty DESC, COUNT(*) ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_multi_group_keys",
+    "sql": "SELECT region, city, COUNT(*) FROM t GROUP BY region, city ORDER BY region ASC, COUNT(*) DESC, city ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, city, COUNT(*) FROM t GROUP BY region, city ORDER BY region ASC, COUNT(*) DESC, city ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_having_order_limit",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region HAVING COUNT(*) > 5 ORDER BY COUNT(*) DESC, region ASC LIMIT 3",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region HAVING COUNT(*) > 5 ORDER BY COUNT(*) DESC, region ASC LIMIT 3"
+    ]
+  },
+  {
+    "name": "p6_agg_where_group_having_order",
+    "sql": "SELECT region, SUM(qty) FROM t WHERE amount > 10.0 GROUP BY region HAVING SUM(qty) > 20 ORDER BY SUM(qty) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, SUM(qty) FROM t WHERE amount > 10.0 GROUP BY region HAVING SUM(qty) > 20 ORDER BY SUM(qty) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_global_order_count",
+    "sql": "SELECT COUNT(*) FROM t ORDER BY COUNT(*)",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT COUNT(*) FROM t ORDER BY COUNT(*)"
+    ]
+  },
+  {
+    "name": "p6_agg_global_order_sum",
+    "sql": "SELECT SUM(qty) FROM t ORDER BY SUM(qty)",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT SUM(qty) FROM t ORDER BY SUM(qty)"
+    ]
+  },
+  {
+    "name": "p6_agg_order_count_no_select_agg",
+    "sql": "SELECT region, 1 AS const_col FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, 1 AS const_col FROM t GROUP BY region ORDER BY COUNT(*) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_by_agg_arith",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) + 10 DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY COUNT(*) + 10 DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_distinct_order_limit",
+    "sql": "SELECT DISTINCT COUNT(*) FROM t GROUP BY region ORDER BY 1 DESC LIMIT 3",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT DISTINCT COUNT(*) FROM t GROUP BY region ORDER BY 1 DESC LIMIT 3"
+    ]
+  },
+  {
+    "name": "p6_agg_order_by_min_note",
+    "sql": "SELECT region, MIN(note) FROM t GROUP BY region ORDER BY MIN(note) ASC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, MIN(note) FROM t GROUP BY region ORDER BY MIN(note) ASC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_by_max_qty",
+    "sql": "SELECT region, MAX(qty) FROM t GROUP BY region ORDER BY MAX(qty) DESC, region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, MAX(qty) FROM t GROUP BY region ORDER BY MAX(qty) DESC, region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_by_avg_amount",
+    "sql": "SELECT region, AVG(amount) FROM t GROUP BY region ORDER BY region ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, AVG(amount) FROM t GROUP BY region ORDER BY region ASC"
+    ]
+  },
+  {
+    "name": "p6_agg_order_limit_zero",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region ASC LIMIT 0",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region ASC LIMIT 0"
+    ]
+  },
+  {
+    "name": "p6_agg_limit_large_offset",
+    "sql": "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region ASC LIMIT 999999 OFFSET 2",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "t={CSV}",
+      "--sql",
+      "SELECT region, COUNT(*) FROM t GROUP BY region ORDER BY region ASC LIMIT 999999 OFFSET 2"
+    ]
   }
 ]

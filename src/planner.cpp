@@ -1,10 +1,13 @@
 #include "planner.h"
 #include "ops_agg.h"
+#include "ops_sort.h"
+#include "ops_distinct.h"
 
 #include <iostream>
 #include <algorithm>
 #include <cstdlib>
-#include <functional>
+#include <cassert>
+#include <limits>
 
 static inline std::string toLower(const std::string& str) {
     std::string lower = str;
@@ -113,6 +116,203 @@ static void collectBoundColumnIndices(const BoundExpr* expr, std::vector<size_t>
     collectBoundColumnIndices(expr->like_pattern.get(), out_indices);
 }
 
+// Named function for post-aggregate expression rewriting (select items, HAVING, ORDER BY)
+static std::unique_ptr<BoundExpr> rewritePostAggregateExpr(
+    const Expr* ast_expr,
+    const TableRef& from_table,
+    const std::vector<Column>& schema,
+    const std::vector<std::unique_ptr<BoundExpr>>& bound_group_by,
+    std::vector<AggSpec>& agg_specs,
+    Plan& plan
+) {
+    if (!ast_expr) return nullptr;
+
+    // Check if ast_expr matches any GROUP BY expression structurally
+    if (!hasAggregateCall(ast_expr)) {
+        auto candidate = bindExpr(ast_expr, from_table, schema, plan.literal_arena);
+        for (size_t g = 0; g < bound_group_by.size(); ++g) {
+            if (boundExprsEqual(candidate.get(), bound_group_by[g].get())) {
+                auto slot = std::make_unique<BoundExpr>();
+                slot->kind = BoundExprKind::SLOT_REF;
+                slot->slot_idx = g;
+                slot->affinity = candidate->affinity;
+                return slot;
+            }
+        }
+    }
+
+    // Aggregate function call
+    if (ast_expr->kind == ExprKind::FUNCTION_CALL) {
+        std::string name = toLower(ast_expr->func_name);
+        if (!isAggregateFunction(name)) {
+            std::cerr << "not implemented yet: scalar function: " << ast_expr->func_name << "\n";
+            std::exit(3);
+        }
+        if (ast_expr->func_distinct) {
+            std::cerr << "not implemented yet: COUNT(DISTINCT)\n";
+            std::exit(3);
+        }
+
+        AggFunc func;
+        if (name == "count") {
+            func = ast_expr->func_star ? AggFunc::COUNT_STAR : AggFunc::COUNT;
+        } else if (name == "sum") {
+            func = AggFunc::SUM;
+        } else if (name == "avg") {
+            func = AggFunc::AVG;
+        } else if (name == "min") {
+            func = AggFunc::MIN;
+        } else if (name == "max") {
+            func = AggFunc::MAX;
+        } else {
+            std::cerr << "not implemented yet: aggregate function: " << ast_expr->func_name << "\n";
+            std::exit(3);
+        }
+
+        if (ast_expr->func_star && func != AggFunc::COUNT_STAR) {
+            std::cerr << "Error: misuse of aggregate function " << ast_expr->func_name << "()\n";
+            std::exit(2);
+        }
+
+        std::unique_ptr<BoundExpr> bound_arg = nullptr;
+        if (func != AggFunc::COUNT_STAR) {
+            if (ast_expr->func_args.empty()) {
+                std::cerr << "Error: aggregate function " << ast_expr->func_name << " requires an argument\n";
+                std::exit(2);
+            }
+            if (ast_expr->func_args.size() > 1) {
+                std::cerr << "not implemented yet: scalar function: " << ast_expr->func_name << "\n";
+                std::exit(3);
+            }
+            const auto& arg_expr = ast_expr->func_args[0];
+            if (hasAggregateCall(arg_expr.get())) {
+                std::cerr << "Error: misuse of aggregate function (nested aggregate)\n";
+                std::exit(2);
+            }
+            bound_arg = bindExpr(arg_expr.get(), from_table, schema, plan.literal_arena);
+        }
+
+        // Deduplicate AggSpec by structural equality
+        int found_idx = -1;
+        for (size_t i = 0; i < agg_specs.size(); ++i) {
+            if (agg_specs[i].func == func) {
+                if (func == AggFunc::COUNT_STAR) {
+                    found_idx = static_cast<int>(i);
+                    break;
+                } else if (boundExprsEqual(agg_specs[i].arg.get(), bound_arg.get())) {
+                    found_idx = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+
+        if (found_idx < 0) {
+            found_idx = static_cast<int>(agg_specs.size());
+            AggSpec spec;
+            spec.func = func;
+            spec.arg = std::move(bound_arg);
+            spec.sql = ast_expr->toSql();
+            plan.aggregate_sqls.push_back(spec.sql);
+            agg_specs.push_back(std::move(spec));
+        }
+
+        auto slot = std::make_unique<BoundExpr>();
+        slot->kind = BoundExprKind::SLOT_REF;
+        slot->slot_idx = bound_group_by.size() + found_idx;
+        if (func == AggFunc::COUNT_STAR || func == AggFunc::COUNT) {
+            slot->affinity = Affinity::NUMERIC;
+        } else if (func == AggFunc::AVG) {
+            slot->affinity = Affinity::NUMERIC;
+        } else if (func == AggFunc::SUM) {
+            slot->affinity = Affinity::NUMERIC;
+        } else if (func == AggFunc::MIN || func == AggFunc::MAX) {
+            if (agg_specs[found_idx].arg) {
+                slot->affinity = agg_specs[found_idx].arg->affinity;
+            }
+        }
+        return slot;
+    }
+
+    // Bare column reference that did not match any GROUP BY expression
+    if (ast_expr->kind == ExprKind::COLUMN_REF) {
+        std::cerr << "Error: column '" << ast_expr->col_name
+                  << "' must appear in the GROUP BY clause or be used in an aggregate function\n";
+        std::exit(2);
+    }
+
+    // Literals
+    if (ast_expr->kind == ExprKind::LITERAL_INT ||
+        ast_expr->kind == ExprKind::LITERAL_FLOAT ||
+        ast_expr->kind == ExprKind::LITERAL_STRING ||
+        ast_expr->kind == ExprKind::LITERAL_NULL) {
+        return bindExpr(ast_expr, from_table, schema, plan.literal_arena);
+    }
+
+    // Unary Op
+    if (ast_expr->kind == ExprKind::UNARY_OP) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::UNARY_OP;
+        b->op = toLower(ast_expr->op);
+        b->left = rewritePostAggregateExpr(ast_expr->child.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        return b;
+    }
+
+    // Binary Op
+    if (ast_expr->kind == ExprKind::BINARY_OP) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::BINARY_OP;
+        b->op = toLower(ast_expr->op);
+        b->left = rewritePostAggregateExpr(ast_expr->left.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        b->right = rewritePostAggregateExpr(ast_expr->right.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        return b;
+    }
+
+    // IS NULL
+    if (ast_expr->kind == ExprKind::IS_NULL) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::IS_NULL;
+        b->is_not = ast_expr->is_not;
+        b->left = rewritePostAggregateExpr(ast_expr->child.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        return b;
+    }
+
+    // BETWEEN
+    if (ast_expr->kind == ExprKind::BETWEEN) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::BETWEEN;
+        b->is_not = ast_expr->is_not;
+        b->left = rewritePostAggregateExpr(ast_expr->between_expr.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        b->between_low = rewritePostAggregateExpr(ast_expr->between_low.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        b->between_high = rewritePostAggregateExpr(ast_expr->between_high.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        return b;
+    }
+
+    // IN LIST
+    if (ast_expr->kind == ExprKind::IN_LIST) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::IN_LIST;
+        b->is_not = ast_expr->is_not;
+        b->left = rewritePostAggregateExpr(ast_expr->in_expr.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        for (const auto& item : ast_expr->in_list) {
+            b->in_list.push_back(rewritePostAggregateExpr(item.get(), from_table, schema, bound_group_by, agg_specs, plan));
+        }
+        return b;
+    }
+
+    // LIKE
+    if (ast_expr->kind == ExprKind::LIKE) {
+        auto b = std::make_unique<BoundExpr>();
+        b->kind = BoundExprKind::LIKE;
+        b->is_not = ast_expr->is_not;
+        b->left = rewritePostAggregateExpr(ast_expr->like_expr.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        b->like_pattern = rewritePostAggregateExpr(ast_expr->like_pattern.get(), from_table, schema, bound_group_by, agg_specs, plan);
+        return b;
+    }
+
+    std::cerr << "Error: unhandled expression kind in aggregate query\n";
+    std::exit(2);
+}
+
 Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups) {
     Plan plan;
 
@@ -134,16 +334,8 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
     }
 
     // Check for unsupported features (exit code 3)
-    if (stmt.distinct) {
-        std::cerr << "not implemented yet: DISTINCT\n";
-        std::exit(3);
-    }
     if (!stmt.joins.empty()) {
         std::cerr << "not implemented yet: JOIN\n";
-        std::exit(3);
-    }
-    if (!stmt.order_by.empty()) {
-        std::cerr << "not implemented yet: ORDER BY\n";
         std::exit(3);
     }
 
@@ -193,6 +385,14 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             std::exit(3);
         }
     }
+    if (!is_aggregate_query) {
+        for (const auto& ob : stmt.order_by) {
+            if (hasAggregateCall(ob.expr.get())) {
+                std::cerr << "Error: misuse of aggregate function in ORDER BY\n";
+                std::exit(2);
+            }
+        }
+    }
 
     // Extract table column types and names
     std::vector<ColType> col_types;
@@ -204,7 +404,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
 
     if (!is_aggregate_query) {
         // ---------------------------------------------------------------------
-        // Phase 2 path: Non-aggregate query
+        // Non-aggregate query path
         // ---------------------------------------------------------------------
         if (stmt.having) {
             std::cerr << "not implemented yet: HAVING clause on a non-aggregate query\n";
@@ -216,8 +416,10 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             std::string sql;
         };
         std::vector<ExpandedItem> expanded_items;
+        std::vector<size_t> item_slot_map; // maps AST select item index to its starting slot
 
         for (const auto& item : stmt.items) {
+            item_slot_map.push_back(expanded_items.size());
             if (item.expr->kind == ExprKind::STAR) {
                 if (!item.expr->table_name.empty()) {
                     std::string prefix_lower = toLower(item.expr->table_name);
@@ -255,34 +457,6 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             }
         }
 
-        std::vector<size_t> needed_cols;
-        if (stmt.where_clause) {
-            collectAstColumnIndices(stmt.where_clause.get(), stmt.from_table, schema, needed_cols);
-            plan.has_filter = true;
-            plan.where_sql = stmt.where_clause->toSql();
-        }
-        for (const auto& item : stmt.items) {
-            if (item.expr->kind == ExprKind::STAR) {
-                for (size_t c = 0; c < schema.size(); ++c) {
-                    needed_cols.push_back(c);
-                }
-            } else {
-                collectAstColumnIndices(item.expr.get(), stmt.from_table, schema, needed_cols);
-            }
-        }
-
-        std::sort(needed_cols.begin(), needed_cols.end());
-        needed_cols.erase(std::unique(needed_cols.begin(), needed_cols.end()), needed_cols.end());
-        plan.needed_columns = needed_cols;
-        for (size_t c : needed_cols) {
-            plan.needed_column_names.push_back(schema[c].name);
-        }
-
-        std::unique_ptr<BoundExpr> bound_where;
-        if (stmt.where_clause) {
-            bound_where = bindExpr(stmt.where_clause.get(), stmt.from_table, schema, plan.literal_arena);
-        }
-
         std::vector<std::unique_ptr<BoundExpr>> bound_selects;
         size_t exp_idx = 0;
         for (const auto& item : stmt.items) {
@@ -305,6 +479,114 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             }
         }
 
+        size_t N = bound_selects.size();
+        plan.visible_width = N;
+
+        // Process ORDER BY terms for non-aggregate query
+        std::vector<SortTerm> sort_terms;
+        std::vector<std::unique_ptr<BoundExpr>> hidden_exprs;
+
+        for (const auto& ob_item : stmt.order_by) {
+            const Expr* expr = ob_item.expr.get();
+            int found_slot = -1;
+
+            // Step 1: Integer literal ordinal
+            if (expr->kind == ExprKind::LITERAL_INT) {
+                long long k = expr->int_val;
+                if (k < 1 || k > static_cast<long long>(N)) {
+                    std::cerr << "Error: ORDER BY term out of range\n";
+                    std::exit(2);
+                }
+                found_slot = static_cast<int>(k - 1);
+            }
+
+            // Step 2: Bare unqualified identifier matching select item alias
+            if (found_slot < 0 && expr->kind == ExprKind::COLUMN_REF && expr->table_name.empty()) {
+                std::string col_lower = toLower(expr->col_name);
+                for (size_t i = 0; i < stmt.items.size(); ++i) {
+                    if (!stmt.items[i].alias.empty() && toLower(stmt.items[i].alias) == col_lower) {
+                        found_slot = static_cast<int>(item_slot_map[i]);
+                        break;
+                    }
+                }
+            }
+
+            // Step 3: Expression binding
+            if (found_slot < 0) {
+                auto bound_ob = bindExpr(expr, stmt.from_table, schema, plan.literal_arena);
+                // Check if structurally equal to an existing visible select item
+                for (size_t s = 0; s < N; ++s) {
+                    if (boundExprsEqual(bound_ob.get(), bound_selects[s].get())) {
+                        found_slot = static_cast<int>(s);
+                        break;
+                    }
+                }
+                if (found_slot < 0) {
+                    if (stmt.distinct) {
+                        std::cerr << "Error: for SELECT DISTINCT, ORDER BY terms must appear in the select list\n";
+                        std::exit(2);
+                    }
+                    // Check if structurally equal to an already added hidden column
+                    for (size_t h = 0; h < hidden_exprs.size(); ++h) {
+                        if (boundExprsEqual(bound_ob.get(), hidden_exprs[h].get())) {
+                            found_slot = static_cast<int>(N + h);
+                            break;
+                        }
+                    }
+                    if (found_slot < 0) {
+                        found_slot = static_cast<int>(N + hidden_exprs.size());
+                        hidden_exprs.push_back(std::move(bound_ob));
+                    }
+                }
+            }
+
+            sort_terms.push_back({static_cast<size_t>(found_slot), ob_item.descending});
+            plan.sort_terms.push_back({expr->toSql(), ob_item.descending});
+        }
+
+        if (stmt.distinct) {
+            assert(hidden_exprs.empty());
+        }
+
+        // Collect scan column indices
+        std::vector<size_t> needed_cols;
+        if (stmt.where_clause) {
+            collectAstColumnIndices(stmt.where_clause.get(), stmt.from_table, schema, needed_cols);
+            plan.has_filter = true;
+            plan.where_sql = stmt.where_clause->toSql();
+        }
+        for (const auto& item : stmt.items) {
+            if (item.expr->kind == ExprKind::STAR) {
+                for (size_t c = 0; c < schema.size(); ++c) {
+                    needed_cols.push_back(c);
+                }
+            } else {
+                collectAstColumnIndices(item.expr.get(), stmt.from_table, schema, needed_cols);
+            }
+        }
+        for (const auto& h : hidden_exprs) {
+            collectBoundColumnIndices(h.get(), needed_cols);
+        }
+
+        plan.hidden_columns_count = hidden_exprs.size();
+        for (size_t h = 0; h < hidden_exprs.size(); ++h) {
+            bound_selects.push_back(std::move(hidden_exprs[h]));
+            plan.output_headers.push_back("hidden_" + std::to_string(h));
+        }
+
+        std::sort(needed_cols.begin(), needed_cols.end());
+        needed_cols.erase(std::unique(needed_cols.begin(), needed_cols.end()), needed_cols.end());
+        plan.needed_columns = needed_cols;
+        for (size_t c : needed_cols) {
+            plan.needed_column_names.push_back(schema[c].name);
+        }
+
+        std::unique_ptr<BoundExpr> bound_where;
+        if (stmt.where_clause) {
+            bound_where = bindExpr(stmt.where_clause.get(), stmt.from_table, schema, plan.literal_arena);
+        }
+
+        // Build pipeline: Scan -> [Filter WHERE] -> Project -> [Distinct] -> [Sort] -> [Limit]
         std::unique_ptr<Operator> op = std::make_unique<ScanOperator>(
             plan.csv_path,
             plan.needed_columns,
@@ -322,6 +604,35 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             plan.output_headers
         );
 
+        if (stmt.distinct) {
+            plan.has_distinct = true;
+            op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, max_groups);
+        }
+
+        if (!stmt.order_by.empty()) {
+            plan.has_sort = true;
+            long long top_n = -1;
+            if (stmt.limit.has_value()) {
+                long long lim = stmt.limit.value();
+                long long off = stmt.offset.value_or(0);
+                if (lim <= 0) {
+                    top_n = 0;
+                } else {
+                    if (off > 0 && lim > std::numeric_limits<long long>::max() - off) {
+                        top_n = std::numeric_limits<long long>::max();
+                    } else {
+                        top_n = lim + off;
+                    }
+                    if (top_n > 100000) {
+                        top_n = -1; // Fallback to full sort for large bounds
+                    }
+                }
+            }
+            plan.sort_is_top_n = (top_n >= 0);
+            plan.sort_top_n = top_n;
+            op = std::make_unique<SortOperator>(std::move(op), std::move(sort_terms), top_n);
+        }
+
         if (stmt.limit.has_value() || stmt.offset.has_value()) {
             plan.has_limit = true;
             plan.limit = stmt.limit.value_or(-1);
@@ -334,7 +645,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
     }
 
     // -------------------------------------------------------------------------
-    // Phase 3 path: Aggregate query
+    // Aggregate query path
     // -------------------------------------------------------------------------
     plan.has_aggregate = true;
 
@@ -354,196 +665,6 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
     }
 
     std::vector<AggSpec> agg_specs;
-
-    // Recursive rewriter for expressions in SELECT items and HAVING
-    std::function<std::unique_ptr<BoundExpr>(const Expr*)> rewrite = [&](const Expr* ast_expr) -> std::unique_ptr<BoundExpr> {
-        if (!ast_expr) return nullptr;
-
-        // Check if ast_expr matches any GROUP BY expression structurally
-        if (!hasAggregateCall(ast_expr)) {
-            auto candidate = bindExpr(ast_expr, stmt.from_table, schema, plan.literal_arena);
-            for (size_t g = 0; g < bound_group_by.size(); ++g) {
-                if (boundExprsEqual(candidate.get(), bound_group_by[g].get())) {
-                    auto slot = std::make_unique<BoundExpr>();
-                    slot->kind = BoundExprKind::SLOT_REF;
-                    slot->slot_idx = g;
-                    slot->affinity = candidate->affinity;
-                    return slot;
-                }
-            }
-        }
-
-        // Aggregate function call
-        if (ast_expr->kind == ExprKind::FUNCTION_CALL) {
-            std::string name = toLower(ast_expr->func_name);
-            if (!isAggregateFunction(name)) {
-                std::cerr << "not implemented yet: scalar function: " << ast_expr->func_name << "\n";
-                std::exit(3);
-            }
-            if (ast_expr->func_distinct) {
-                std::cerr << "not implemented yet: COUNT(DISTINCT)\n";
-                std::exit(3);
-            }
-
-            AggFunc func;
-            if (name == "count") {
-                func = ast_expr->func_star ? AggFunc::COUNT_STAR : AggFunc::COUNT;
-            } else if (name == "sum") {
-                func = AggFunc::SUM;
-            } else if (name == "avg") {
-                func = AggFunc::AVG;
-            } else if (name == "min") {
-                func = AggFunc::MIN;
-            } else if (name == "max") {
-                func = AggFunc::MAX;
-            } else {
-                std::cerr << "not implemented yet: aggregate function: " << ast_expr->func_name << "\n";
-                std::exit(3);
-            }
-
-            if (ast_expr->func_star && func != AggFunc::COUNT_STAR) {
-                std::cerr << "Error: misuse of aggregate function " << ast_expr->func_name << "()\n";
-                std::exit(2);
-            }
-
-            std::unique_ptr<BoundExpr> bound_arg = nullptr;
-            if (func != AggFunc::COUNT_STAR) {
-                if (ast_expr->func_args.empty()) {
-                    std::cerr << "Error: aggregate function " << ast_expr->func_name << " requires an argument\n";
-                    std::exit(2);
-                }
-                if (ast_expr->func_args.size() > 1) {
-                    std::cerr << "not implemented yet: scalar function: " << ast_expr->func_name << "\n";
-                    std::exit(3);
-                }
-                const auto& arg_expr = ast_expr->func_args[0];
-                if (hasAggregateCall(arg_expr.get())) {
-                    std::cerr << "Error: misuse of aggregate function (nested aggregate)\n";
-                    std::exit(2);
-                }
-                bound_arg = bindExpr(arg_expr.get(), stmt.from_table, schema, plan.literal_arena);
-            }
-
-            // Deduplicate AggSpec by structural equality
-            int found_idx = -1;
-            for (size_t i = 0; i < agg_specs.size(); ++i) {
-                if (agg_specs[i].func == func) {
-                    if (func == AggFunc::COUNT_STAR) {
-                        found_idx = static_cast<int>(i);
-                        break;
-                    } else if (boundExprsEqual(agg_specs[i].arg.get(), bound_arg.get())) {
-                        found_idx = static_cast<int>(i);
-                        break;
-                    }
-                }
-            }
-
-            if (found_idx < 0) {
-                found_idx = static_cast<int>(agg_specs.size());
-                AggSpec spec;
-                spec.func = func;
-                spec.arg = std::move(bound_arg);
-                spec.sql = ast_expr->toSql();
-                plan.aggregate_sqls.push_back(spec.sql);
-                agg_specs.push_back(std::move(spec));
-            }
-
-            auto slot = std::make_unique<BoundExpr>();
-            slot->kind = BoundExprKind::SLOT_REF;
-            slot->slot_idx = bound_group_by.size() + found_idx;
-            if (func == AggFunc::COUNT_STAR || func == AggFunc::COUNT) {
-                slot->affinity = Affinity::NUMERIC;
-            } else if (func == AggFunc::AVG) {
-                slot->affinity = Affinity::NUMERIC;
-            } else if (func == AggFunc::SUM) {
-                slot->affinity = Affinity::NUMERIC;
-            } else if (func == AggFunc::MIN || func == AggFunc::MAX) {
-                if (agg_specs[found_idx].arg) {
-                    slot->affinity = agg_specs[found_idx].arg->affinity;
-                }
-            }
-            return slot;
-        }
-
-        // Bare column reference that did not match any GROUP BY expression
-        if (ast_expr->kind == ExprKind::COLUMN_REF) {
-            std::cerr << "Error: column '" << ast_expr->col_name
-                      << "' must appear in the GROUP BY clause or be used in an aggregate function\n";
-            std::exit(2);
-        }
-
-        // Literals
-        if (ast_expr->kind == ExprKind::LITERAL_INT ||
-            ast_expr->kind == ExprKind::LITERAL_FLOAT ||
-            ast_expr->kind == ExprKind::LITERAL_STRING ||
-            ast_expr->kind == ExprKind::LITERAL_NULL) {
-            return bindExpr(ast_expr, stmt.from_table, schema, plan.literal_arena);
-        }
-
-        // Unary Op
-        if (ast_expr->kind == ExprKind::UNARY_OP) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::UNARY_OP;
-            b->op = toLower(ast_expr->op);
-            b->left = rewrite(ast_expr->child.get());
-            return b;
-        }
-
-        // Binary Op
-        if (ast_expr->kind == ExprKind::BINARY_OP) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::BINARY_OP;
-            b->op = toLower(ast_expr->op);
-            b->left = rewrite(ast_expr->left.get());
-            b->right = rewrite(ast_expr->right.get());
-            return b;
-        }
-
-        // IS NULL
-        if (ast_expr->kind == ExprKind::IS_NULL) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::IS_NULL;
-            b->is_not = ast_expr->is_not;
-            b->left = rewrite(ast_expr->child.get());
-            return b;
-        }
-
-        // BETWEEN
-        if (ast_expr->kind == ExprKind::BETWEEN) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::BETWEEN;
-            b->is_not = ast_expr->is_not;
-            b->left = rewrite(ast_expr->between_expr.get());
-            b->between_low = rewrite(ast_expr->between_low.get());
-            b->between_high = rewrite(ast_expr->between_high.get());
-            return b;
-        }
-
-        // IN LIST
-        if (ast_expr->kind == ExprKind::IN_LIST) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::IN_LIST;
-            b->is_not = ast_expr->is_not;
-            b->left = rewrite(ast_expr->in_expr.get());
-            for (const auto& item : ast_expr->in_list) {
-                b->in_list.push_back(rewrite(item.get()));
-            }
-            return b;
-        }
-
-        // LIKE
-        if (ast_expr->kind == ExprKind::LIKE) {
-            auto b = std::make_unique<BoundExpr>();
-            b->kind = BoundExprKind::LIKE;
-            b->is_not = ast_expr->is_not;
-            b->left = rewrite(ast_expr->like_expr.get());
-            b->like_pattern = rewrite(ast_expr->like_pattern.get());
-            return b;
-        }
-
-        std::cerr << "Error: unhandled expression kind in aggregate query\n";
-        std::exit(2);
-    };
 
     // Rewrite SELECT items and determine headers
     std::vector<std::unique_ptr<BoundExpr>> bound_selects;
@@ -570,18 +691,93 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
         }
         plan.output_headers.push_back(header);
         plan.select_sqls.push_back(item.expr->toSql());
-        bound_selects.push_back(rewrite(item.expr.get()));
+        bound_selects.push_back(rewritePostAggregateExpr(item.expr.get(), stmt.from_table, schema, bound_group_by, agg_specs, plan));
     }
+
+    size_t N = bound_selects.size();
+    plan.visible_width = N;
 
     // Rewrite HAVING if present
     std::unique_ptr<BoundExpr> bound_having = nullptr;
     if (stmt.having) {
         plan.has_having = true;
         plan.having_sql = stmt.having->toSql();
-        bound_having = rewrite(stmt.having.get());
+        bound_having = rewritePostAggregateExpr(stmt.having.get(), stmt.from_table, schema, bound_group_by, agg_specs, plan);
     }
 
-    // Collect needed columns from WHERE, GROUP BY, and AggSpec arguments
+    // Process ORDER BY terms for aggregate query
+    std::vector<SortTerm> sort_terms;
+    std::vector<std::unique_ptr<BoundExpr>> hidden_exprs;
+
+    for (const auto& ob_item : stmt.order_by) {
+        const Expr* expr = ob_item.expr.get();
+        int found_slot = -1;
+
+        // Step 1: Integer literal ordinal
+        if (expr->kind == ExprKind::LITERAL_INT) {
+            long long k = expr->int_val;
+            if (k < 1 || k > static_cast<long long>(N)) {
+                std::cerr << "Error: ORDER BY term out of range\n";
+                std::exit(2);
+            }
+            found_slot = static_cast<int>(k - 1);
+        }
+
+        // Step 2: Bare unqualified identifier matching select item alias
+        if (found_slot < 0 && expr->kind == ExprKind::COLUMN_REF && expr->table_name.empty()) {
+            std::string col_lower = toLower(expr->col_name);
+            for (size_t i = 0; i < stmt.items.size(); ++i) {
+                if (!stmt.items[i].alias.empty() && toLower(stmt.items[i].alias) == col_lower) {
+                    found_slot = static_cast<int>(i);
+                    break;
+                }
+            }
+        }
+
+        // Step 3: Rewrite with rewritePostAggregateExpr (adds aggregates to agg_specs)
+        if (found_slot < 0) {
+            auto bound_ob = rewritePostAggregateExpr(expr, stmt.from_table, schema, bound_group_by, agg_specs, plan);
+            // Check if structurally equal to an existing visible select item
+            for (size_t s = 0; s < N; ++s) {
+                if (boundExprsEqual(bound_ob.get(), bound_selects[s].get())) {
+                    found_slot = static_cast<int>(s);
+                    break;
+                }
+            }
+            if (found_slot < 0) {
+                if (stmt.distinct) {
+                    std::cerr << "Error: for SELECT DISTINCT, ORDER BY terms must appear in the select list\n";
+                    std::exit(2);
+                }
+                // Check if structurally equal to an already added hidden column
+                for (size_t h = 0; h < hidden_exprs.size(); ++h) {
+                    if (boundExprsEqual(bound_ob.get(), hidden_exprs[h].get())) {
+                        found_slot = static_cast<int>(N + h);
+                        break;
+                    }
+                }
+                if (found_slot < 0) {
+                    found_slot = static_cast<int>(N + hidden_exprs.size());
+                    hidden_exprs.push_back(std::move(bound_ob));
+                }
+            }
+        }
+
+        sort_terms.push_back({static_cast<size_t>(found_slot), ob_item.descending});
+        plan.sort_terms.push_back({expr->toSql(), ob_item.descending});
+    }
+
+    if (stmt.distinct) {
+        assert(hidden_exprs.empty());
+    }
+
+    plan.hidden_columns_count = hidden_exprs.size();
+    for (size_t h = 0; h < hidden_exprs.size(); ++h) {
+        bound_selects.push_back(std::move(hidden_exprs[h]));
+        plan.output_headers.push_back("hidden_" + std::to_string(h));
+    }
+
+    // Collect needed columns from WHERE, GROUP BY, and AggSpec arguments (now including ORDER BY aggregates)
     std::vector<size_t> needed_cols;
     if (stmt.where_clause) {
         collectAstColumnIndices(stmt.where_clause.get(), stmt.from_table, schema, needed_cols);
@@ -611,7 +807,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
     }
 
     // Assemble operator pipeline:
-    // Scan -> [Filter (WHERE)] -> Aggregate -> [Filter (HAVING)] -> Project -> [Limit]
+    // Scan -> [Filter WHERE] -> Aggregate -> [Filter HAVING] -> Project -> [Distinct] -> [Sort] -> [Limit]
     std::unique_ptr<Operator> op = std::make_unique<ScanOperator>(
         plan.csv_path,
         plan.needed_columns,
@@ -639,6 +835,35 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
         std::move(bound_selects),
         plan.output_headers
     );
+
+    if (stmt.distinct) {
+        plan.has_distinct = true;
+        op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, max_groups);
+    }
+
+    if (!stmt.order_by.empty()) {
+        plan.has_sort = true;
+        long long top_n = -1;
+        if (stmt.limit.has_value()) {
+            long long lim = stmt.limit.value();
+            long long off = stmt.offset.value_or(0);
+            if (lim <= 0) {
+                top_n = 0;
+            } else {
+                if (off > 0 && lim > std::numeric_limits<long long>::max() - off) {
+                    top_n = std::numeric_limits<long long>::max();
+                } else {
+                    top_n = lim + off;
+                }
+                if (top_n > 100000) {
+                    top_n = -1; // Fallback to full sort for large bounds
+                }
+            }
+        }
+        plan.sort_is_top_n = (top_n >= 0);
+        plan.sort_top_n = top_n;
+        op = std::make_unique<SortOperator>(std::move(op), std::move(sort_terms), top_n);
+    }
 
     if (stmt.limit.has_value() || stmt.offset.has_value()) {
         plan.has_limit = true;
@@ -693,8 +918,27 @@ void Plan::explain(FILE* out) const {
             std::fprintf(out, " AS %s", output_headers[i].c_str());
         }
     }
-    std::fprintf(out, "])\n");
+    std::fprintf(out, "], visible_width: %zu, hidden_columns: %zu)\n", visible_width, hidden_columns_count);
     indent += 2;
+
+    if (has_distinct) {
+        std::fprintf(out, "%*sDistinct\n", indent, "");
+        indent += 2;
+    }
+
+    if (has_sort) {
+        std::fprintf(out, "%*sSort (terms: [", indent, "");
+        for (size_t i = 0; i < sort_terms.size(); ++i) {
+            if (i > 0) std::fprintf(out, ", ");
+            std::fprintf(out, "%s %s", sort_terms[i].sql.c_str(), sort_terms[i].descending ? "DESC" : "ASC");
+        }
+        if (sort_is_top_n) {
+            std::fprintf(out, "], mode: TOP-N (n: %lld))\n", sort_top_n);
+        } else {
+            std::fprintf(out, "], mode: FULL)\n");
+        }
+        indent += 2;
+    }
 
     if (has_limit) {
         std::fprintf(out, "%*sLimit (limit: %lld, offset: %lld)\n", indent, "", limit, offset);
