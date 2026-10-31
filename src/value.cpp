@@ -281,29 +281,48 @@ void formatValue(Value v, FILE* out) {
     }
 }
 
-std::string formatValueToString(Value v) {
+size_t formatValueToBuffer(Value v, char* buf, size_t buf_size) {
+    if (!buf || buf_size == 0) return 0;
     switch (v.type) {
         case V_NULL:
-            return "";
-        case V_INT:
-            return std::to_string(v.i);
+            buf[0] = '\0';
+            return 0;
+        case V_INT: {
+            int len = std::snprintf(buf, buf_size, "%lld", v.i);
+            return (len > 0 && static_cast<size_t>(len) < buf_size) ? static_cast<size_t>(len) : 0;
+        }
         case V_FLOAT: {
-            char buf[64];
-            std::snprintf(buf, sizeof(buf), "%.15g", v.d);
+            int len = std::snprintf(buf, buf_size, "%.15g", v.d);
+            if (len <= 0 || static_cast<size_t>(len) >= buf_size) return 0;
             bool has_special = false;
-            for (char* p = buf; *p; ++p) {
-                if (*p == '.' || *p == 'e' || *p == 'E' || *p == 'n' || *p == 'i') {
+            for (int i = 0; i < len; ++i) {
+                char c = buf[i];
+                if (c == '.' || c == 'e' || c == 'E' || c == 'n' || c == 'i') {
                     has_special = true;
                     break;
                 }
             }
-            if (!has_special) {
-                return std::string(buf) + ".0";
+            if (!has_special && static_cast<size_t>(len + 2) < buf_size) {
+                buf[len] = '.';
+                buf[len + 1] = '0';
+                buf[len + 2] = '\0';
+                len += 2;
             }
-            return std::string(buf);
+            return static_cast<size_t>(len);
         }
-        case V_STRING:
-            return std::string(v.s);
+        case V_STRING: {
+            size_t copy_len = v.s.size() < buf_size - 1 ? v.s.size() : buf_size - 1;
+            std::memcpy(buf, v.s.data(), copy_len);
+            buf[copy_len] = '\0';
+            return copy_len;
+        }
     }
-    return "";
+    buf[0] = '\0';
+    return 0;
+}
+
+std::string formatValueToString(Value v) {
+    char buf[128];
+    size_t len = formatValueToBuffer(v, buf, sizeof(buf));
+    return std::string(buf, len);
 }

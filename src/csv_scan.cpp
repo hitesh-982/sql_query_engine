@@ -29,6 +29,15 @@ bool parseDouble(std::string_view f, double& out) {
     while (!f.empty() && (f.back() == ' ' || f.back() == '\t')) f.remove_suffix(1);
     if (f.empty()) return false;
 
+    // Reject NaN, Inf, Infinity (SQLite treats them as TEXT)
+    std::string_view check = f;
+    if (check.front() == '+' || check.front() == '-') {
+        check.remove_prefix(1);
+    }
+    if (check.empty() || (!(check.front() >= '0' && check.front() <= '9') && check.front() != '.')) {
+        return false;
+    }
+
     // std::from_chars for double is supported by modern POSIX C++17 compilers (Clang/GCC).
     // It avoids locale lookups and does not require a null-terminated string buffer.
     auto [ptr, ec] = std::from_chars(f.data(), f.data() + f.size(), out);

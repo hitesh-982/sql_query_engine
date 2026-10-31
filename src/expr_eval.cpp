@@ -242,8 +242,8 @@ static Value evalComparison(Value l, Affinity l_aff, Value r, Affinity r_aff, co
     }
 
     // Step 1: Affinity rules
-    std::string text_holder_l;
-    std::string text_holder_r;
+    char text_buf_l[64];
+    char text_buf_r[64];
 
     if (l_aff == Affinity::NUMERIC && (r_aff == Affinity::TEXT || r_aff == Affinity::NONE)) {
         if (r.type == V_STRING) {
@@ -261,13 +261,13 @@ static Value evalComparison(Value l, Affinity l_aff, Value r, Affinity r_aff, co
         }
     } else if (l_aff == Affinity::TEXT && r_aff == Affinity::NONE) {
         if (r.type == V_INT || r.type == V_FLOAT) {
-            text_holder_r = formatValueToString(r);
-            r = makeString(text_holder_r);
+            size_t n = formatValueToBuffer(r, text_buf_r, sizeof(text_buf_r));
+            r = makeString(std::string_view(text_buf_r, n));
         }
     } else if (r_aff == Affinity::TEXT && l_aff == Affinity::NONE) {
         if (l.type == V_INT || l.type == V_FLOAT) {
-            text_holder_l = formatValueToString(l);
-            l = makeString(text_holder_l);
+            size_t n = formatValueToBuffer(l, text_buf_l, sizeof(text_buf_l));
+            l = makeString(std::string_view(text_buf_l, n));
         }
     }
 
@@ -491,10 +491,22 @@ Value evalExpr(const BoundExpr* expr, const Tuple& tuple) {
             if (t_val.type == V_NULL || p_val.type == V_NULL) {
                 return makeNull();
             }
-            std::string t_str;
-            std::string p_str;
-            std::string_view t_view = (t_val.type == V_STRING) ? t_val.s : (t_str = formatValueToString(t_val), std::string_view(t_str));
-            std::string_view p_view = (p_val.type == V_STRING) ? p_val.s : (p_str = formatValueToString(p_val), std::string_view(p_str));
+            char t_buf[64];
+            char p_buf[64];
+            std::string_view t_view;
+            if (t_val.type == V_STRING) {
+                t_view = t_val.s;
+            } else {
+                size_t n = formatValueToBuffer(t_val, t_buf, sizeof(t_buf));
+                t_view = std::string_view(t_buf, n);
+            }
+            std::string_view p_view;
+            if (p_val.type == V_STRING) {
+                p_view = p_val.s;
+            } else {
+                size_t n = formatValueToBuffer(p_val, p_buf, sizeof(p_buf));
+                p_view = std::string_view(p_buf, n);
+            }
 
             bool match = likeMatch(t_view, p_view);
             if (expr->is_not) match = !match;

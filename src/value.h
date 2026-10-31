@@ -77,7 +77,10 @@ Value valueFromCsvField(std::string_view field, ColType colType);
 // Format a Value for CSV output printer
 void formatValue(Value v, FILE* out);
 
-// Format a Value into a std::string (used by LIKE for non-string operands)
+// Format a Value into a fixed stack buffer without heap allocation
+size_t formatValueToBuffer(Value v, char* buf, size_t buf_size);
+
+// Format a Value into a std::string (used by tests and printer)
 std::string formatValueToString(Value v);
 
 #endif // VALUE_H
