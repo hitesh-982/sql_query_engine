@@ -81,6 +81,16 @@ if [ ! -f "$CUSTOMERS_CSV" ]; then
     "$PYTHON" tools/gen_data.py --rows 1000 --out "$CUSTOMERS_CSV" --seed 42 --table customers
 fi
 
+if [ ! -f "$DATA_DIR/big_values.csv" ]; then
+    printf "val\n9223372036854775800\n100\n" > "$DATA_DIR/big_values.csv"
+fi
+if [ ! -f "$DATA_DIR/text_sum.csv" ]; then
+    printf "val\n12abc\n1.5x\nabc\n7\n\" 8 \"\n" > "$DATA_DIR/text_sum.csv"
+fi
+if [ ! -f "$DATA_DIR/nan_inf.csv" ]; then
+    printf "id,val\n1,nan\n2,inf\n3,-inf\n4,Infinity\n5,0x1p3\n6,42\n7,3.14\n" > "$DATA_DIR/nan_inf.csv"
+fi
+
 # 4. Run error tests (exit 2 for semantic/syntax, exit 3 for unsupported, exit 4 for runtime failure)
 ENGINE_BIN="$REPO_ROOT/engine"
 if [ -x "$ENGINE_BIN" ]; then

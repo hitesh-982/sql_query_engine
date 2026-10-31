@@ -1,0 +1,8 @@
+id,val
+1,nan
+2,inf
+3,-inf
+4,Infinity
+5,0x1p3
+6,42
+7,3.14

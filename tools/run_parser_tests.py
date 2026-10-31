@@ -98,11 +98,23 @@ def test_negative():
     return all_ok
 
 
+import tempfile
+
+
 def test_deep_nesting_100k():
     print("Testing recursion depth limit with 100,000 '(' characters...")
     # Feed 100,000 '(' characters to ensure parser raises ParseError without crashing or stack overflow
     deep_sql = "SELECT " + "(" * 100000 + "1" + ")" * 100000 + " FROM t;"
-    proc = subprocess.run([SQLPARSE_BIN, deep_sql], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    with tempfile.NamedTemporaryFile("w", delete=False) as tf:
+        tf.write(deep_sql)
+        temp_path = tf.name
+
+    try:
+        proc = subprocess.run([SQLPARSE_BIN, "-f", temp_path], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+
     if proc.returncode != 1:
         print(f"[FAIL] 100k deep nesting: expected exit code 1, got {proc.returncode}")
         return False

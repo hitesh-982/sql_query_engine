@@ -3,6 +3,7 @@
 #include <iostream>
 #include <cstring>
 #include <cstdlib>
+#include <cstdint>
 
 void AggregateOperator::addFloatToSum(AggState& st, double val) {
     if (!st.sum_is_float) {

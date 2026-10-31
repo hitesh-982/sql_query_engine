@@ -3,6 +3,7 @@
 #include <iostream>
 #include <limits>
 #include <cstdlib>
+#include <cmath>
 
 static inline std::string toLower(const std::string& str) {
     std::string lower = str;
