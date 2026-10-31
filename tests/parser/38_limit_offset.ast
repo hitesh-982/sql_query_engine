@@ -1,0 +1,5 @@
+(select (distinct false)
+  (items (col a))
+  (from t)
+  (limit 10)
+  (offset 5))

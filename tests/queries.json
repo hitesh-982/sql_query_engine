@@ -1,0 +1,122 @@
+[
+  {
+    "name": "select_all",
+    "sql": "SELECT city, region, id, qty, amount, note FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "*"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_city",
+    "sql": "SELECT city FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "city"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_region",
+    "sql": "SELECT region FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "region"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_id",
+    "sql": "SELECT id FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "id"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_qty_nulls",
+    "sql": "SELECT qty FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "qty"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_amount_nulls",
+    "sql": "SELECT amount FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "amount"],
+    "ordered": true
+  },
+  {
+    "name": "select_one_col_note_quoted_commas",
+    "sql": "SELECT note FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "note"],
+    "ordered": true
+  },
+  {
+    "name": "select_two_cols_city_qty",
+    "sql": "SELECT city, qty FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "city,qty"],
+    "ordered": true
+  },
+  {
+    "name": "select_two_cols_id_amount",
+    "sql": "SELECT id, amount FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "id,amount"],
+    "ordered": true
+  },
+  {
+    "name": "select_three_cols_id_city_region",
+    "sql": "SELECT id, city, region FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "id,city,region"],
+    "ordered": true
+  },
+  {
+    "name": "select_three_cols_qty_amount_note",
+    "sql": "SELECT qty, amount, note FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "qty,amount,note"],
+    "ordered": true
+  },
+  {
+    "name": "select_diff_order_note_id_city",
+    "sql": "SELECT note, id, city FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "note,id,city"],
+    "ordered": true
+  },
+  {
+    "name": "select_diff_order_amount_qty_region",
+    "sql": "SELECT amount, qty, region FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "amount,qty,region"],
+    "ordered": true
+  },
+  {
+    "name": "select_reversed_all_cols",
+    "sql": "SELECT note, amount, qty, id, region, city FROM t",
+    "engine_args": ["--file", "{CSV}", "--select", "note,amount,qty,id,region,city"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_select_star",
+    "sql": "SELECT city, region, id, qty, amount, note FROM t",
+    "engine_args": ["--table", "t={CSV}", "--sql", "SELECT * FROM t"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_select_cols",
+    "sql": "SELECT city, qty FROM t",
+    "engine_args": ["--table", "t={CSV}", "--sql", "SELECT city, qty FROM t"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_limit",
+    "sql": "SELECT id, amount FROM t LIMIT 10",
+    "engine_args": ["--table", "t={CSV}", "--sql", "SELECT id, amount FROM t LIMIT 10"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_limit_offset",
+    "sql": "SELECT id, city, region FROM t LIMIT 5 OFFSET 10",
+    "engine_args": ["--table", "t={CSV}", "--sql", "SELECT id, city, region FROM t LIMIT 5 OFFSET 10"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_qualified_cols",
+    "sql": "SELECT id, note FROM t LIMIT 5",
+    "engine_args": ["--table", "t={CSV}", "--sql", "SELECT t.id, t.note FROM t LIMIT 5"],
+    "ordered": true
+  },
+  {
+    "name": "hook_sql_case_insensitive",
+    "sql": "SELECT city, amount FROM t LIMIT 5",
+    "engine_args": ["--table", "t={CSV}", "--sql", "select CITY, Amount from T limit 5"],
+    "ordered": true
+  }
+]

@@ -1,0 +1,8 @@
+*.o
+engine
+sqlparse
+sqlparse_sanitized
+test_lexer
+tests/data/
+__pycache__/
+*.pyc

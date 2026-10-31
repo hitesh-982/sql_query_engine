@@ -1,0 +1,1 @@
+SELECT -a, NOT b FROM t;

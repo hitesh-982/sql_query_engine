@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items *)
+  (from a)
+  (joins (join inner b (on (= (col a id) (col b id)))) (join left c (on (= (col b id) (col c id))))))

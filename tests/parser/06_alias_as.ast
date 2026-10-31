@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items ((col a) as col_a) ((col b) as col_b))
+  (from t as my_table))

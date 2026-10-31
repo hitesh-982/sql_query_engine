@@ -1,0 +1,1 @@
+SELECT a OR b AND c FROM t;

@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items (not (= (col a) (col b))))
+  (from t))

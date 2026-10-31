@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items (col a))
+  (from t)
+  (where (is_null (col a) true)))

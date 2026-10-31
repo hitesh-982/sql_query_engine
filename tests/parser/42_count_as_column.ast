@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items (col count) (col min))
+  (from t))

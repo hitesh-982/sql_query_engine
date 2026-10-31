@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items (string 'It''s fine') (null))
+  (from t))

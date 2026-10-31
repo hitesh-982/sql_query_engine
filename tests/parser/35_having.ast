@@ -1,0 +1,5 @@
+(select (distinct false)
+  (items (col a) (agg sum (col b)))
+  (from t)
+  (group_by (col a))
+  (having (> (agg sum (col b)) (int 100))))

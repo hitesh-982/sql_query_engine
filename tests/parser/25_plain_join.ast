@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items *)
+  (from t)
+  (joins (join inner u (on (= (col t id) (col u id))))))

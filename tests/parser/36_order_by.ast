@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items (col a) (col b))
+  (from t)
+  (order_by (((col a) asc) ((col b) desc))))

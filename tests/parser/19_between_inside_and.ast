@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items (col a))
+  (from t)
+  (where (and (and (col x) (between (col y) (int 1) (int 10))) (col z))))

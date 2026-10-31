@@ -1,0 +1,1 @@
+SELECT NOT a = b FROM t;

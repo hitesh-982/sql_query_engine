@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items (agg count (distinct (col city))))
+  (from t))

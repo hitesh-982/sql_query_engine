@@ -1,0 +1,11 @@
+- Language: C++17, POSIX (Linux/macOS). Build: g++ -O2 -std=c++17 -Wall -Wextra.
+- Plain, explicit code: structs, for loops, simple functions. No template
+  metaprogramming, no functional style, no macros, no clever abstractions.
+- Comment the WHY of non-obvious lines, not the what.
+- Never use a database library in the engine. SQLite is only a test checker (Python sqlite3).
+- Every file must compile and run. No TODO stubs, no placeholder functions.
+- After writing code, run the build and the tests in the terminal yourself. If something
+  fails, fix it (max 3 attempts), then report honestly what still fails. Never claim a
+  test passes without running it.
+- Do not change files outside the current phase unless a bug requires it, and say so.
+- Empty CSV field means SQL NULL everywhere in this project.

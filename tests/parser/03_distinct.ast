@@ -1,0 +1,3 @@
+(select (distinct true)
+  (items (col a) (col b))
+  (from t))

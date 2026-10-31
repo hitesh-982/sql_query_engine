@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items (col a))
+  (from t)
+  (where (in (col a) ((int 1) (int 2) (int 3)))))

@@ -1,0 +1,1 @@
+SELECT * FROM t WHERE a IN (1, 2;

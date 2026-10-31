@@ -1,0 +1,3 @@
+(select (distinct false)
+  (items (agg sum (col amount)) (agg avg (col qty)) (agg min (col id)) (agg max (col id)))
+  (from t))

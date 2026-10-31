@@ -1,0 +1,4 @@
+(select (distinct false)
+  (items (col a) (col b))
+  (from t)
+  (group_by (col a) (col b)))
