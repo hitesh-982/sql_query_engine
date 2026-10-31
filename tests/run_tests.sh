@@ -30,10 +30,31 @@ if [ -f "Makefile" ]; then
         exit 1
     fi
 else
-    echo "[INFO] No Makefile present yet (Phase 0)."
+    echo "[INFO] No Makefile present yet."
 fi
 
-# 2. Generate 100k-row test dataset and edge datasets
+# 2. Run unit tests
+if [ -x "./test_eval" ]; then
+    echo "--- Running test_eval unit tests ---"
+    if ./test_eval; then
+        echo "[OK] test_eval passed"
+    else
+        echo "[FAIL] test_eval failed"
+        FAILED=1
+    fi
+fi
+
+if [ -x "./test_lexer" ]; then
+    echo "--- Running test_lexer unit tests ---"
+    if ./test_lexer; then
+        echo "[OK] test_lexer passed"
+    else
+        echo "[FAIL] test_lexer failed"
+        FAILED=1
+    fi
+fi
+
+# 3. Generate 100k-row test dataset and edge datasets
 DATA_100K="$DATA_DIR/data_100k.csv"
 if [ ! -f "$DATA_100K" ]; then
     echo "--- Generating 100k dataset and edge files ---"
@@ -50,8 +71,71 @@ if [ ! -f "$CUSTOMERS_CSV" ]; then
     "$PYTHON" tools/gen_data.py --rows 1000 --out "$CUSTOMERS_CSV" --seed 42 --table customers
 fi
 
-# 3. Run compare.py against engine if engine binary exists
+# 4. Run error tests (exit 2 for unknown table/col, exit 3 for unsupported features)
 ENGINE_BIN="$REPO_ROOT/engine"
+if [ -x "$ENGINE_BIN" ]; then
+    echo "--- Running Error Tests (exit codes 2 and 3) ---"
+    check_error() {
+        local desc="$1"
+        local cmd="$2"
+        local expected_code="$3"
+        local expected_str="$4"
+
+        local err_output
+        set +e
+        err_output=$(eval "$cmd" 2>&1 >/dev/null)
+        local code=$?
+        set -e
+
+        if [ "$code" -ne "$expected_code" ]; then
+            echo "[FAIL] $desc: expected exit code $expected_code, got $code"
+            FAILED=1
+            return
+        fi
+
+        if ! echo "$err_output" | grep -qi "$expected_str"; then
+            echo "[FAIL] $desc: expected stderr to contain '$expected_str', got: '$err_output'"
+            FAILED=1
+            return
+        fi
+
+        echo "[OK] $desc (exit $code)"
+    }
+
+    check_error "Unknown column" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT nonexistent_column FROM t\"" \
+        2 "unknown column"
+
+    check_error "Unknown table" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM nonexistent_table\"" \
+        2 "unknown table"
+
+    check_error "Aggregate in WHERE" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t WHERE sum(qty) > 10\"" \
+        3 "not implemented yet: aggregate function"
+
+    check_error "JOIN" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT t.id FROM t JOIN customers c ON t.id = c.id\"" \
+        3 "not implemented yet: JOIN"
+
+    check_error "GROUP BY" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t GROUP BY city\"" \
+        3 "not implemented yet: GROUP BY"
+
+    check_error "HAVING" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t HAVING 1 = 1\"" \
+        3 "not implemented yet: HAVING"
+
+    check_error "ORDER BY" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT city FROM t ORDER BY city\"" \
+        3 "not implemented yet: ORDER BY"
+
+    check_error "DISTINCT" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT DISTINCT city FROM t\"" \
+        3 "not implemented yet: DISTINCT"
+fi
+
+# 5. Run compare.py against engine
 if [ -x "$ENGINE_BIN" ]; then
     echo "--- Running engine comparisons against SQLite ---"
     
@@ -68,11 +152,9 @@ if [ -x "$ENGINE_BIN" ]; then
             FAILED=1
         fi
     done
-else
-    echo "[INFO] Engine binary ($ENGINE_BIN) not built yet (Phase 0). Skipping CSV scan comparison."
 fi
 
-# 4. Run parser tests (Phase 4) if test_parser.sh exists
+# 6. Run parser tests (Phase 4) if test_parser.sh exists
 if [ -f "$REPO_ROOT/tests/test_parser.sh" ]; then
     echo "--- Running Phase 4 Parser Tests ---"
     if ! bash "$REPO_ROOT/tests/test_parser.sh"; then
@@ -80,7 +162,7 @@ if [ -f "$REPO_ROOT/tests/test_parser.sh" ]; then
     fi
 fi
 
-# 5. Final summary
+# 7. Final summary
 echo "==========================================="
 if [ $FAILED -eq 0 ]; then
     echo "All tests PASSED!"

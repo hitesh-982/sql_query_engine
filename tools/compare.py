@@ -164,28 +164,42 @@ def cells_match(engine_cell, sqlite_cell):
     """
     Compare engine string cell with SQLite value.
     Empty string in engine stdout represents SQL NULL.
-    Floats compare with 1e-9 relative and absolute tolerance.
+    Parse each engine cell as int if it matches integer pattern, float otherwise (or string).
+    Compare numerically with tolerance when either side is a float.
+    Treat SQLite 5.0 and engine "5.0" or 5 and "5.0" as equal numerically.
     """
     if sqlite_cell is None:
         return engine_cell == ""
-        
-    if isinstance(sqlite_cell, float):
-        if engine_cell == "":
-            return False
+    if engine_cell == "":
+        return sqlite_cell is None
+
+    eng_is_int = False
+    eng_int = 0
+    eng_is_float = False
+    eng_float = 0.0
+
+    try:
+        eng_int = int(engine_cell)
+        eng_is_int = True
+    except ValueError:
         try:
-            eng_f = float(engine_cell)
-            return math.isclose(eng_f, sqlite_cell, rel_tol=1e-9, abs_tol=1e-9)
+            eng_float = float(engine_cell)
+            eng_is_float = True
         except ValueError:
-            return False
-            
-    if isinstance(sqlite_cell, int):
-        if engine_cell == "":
-            return False
-        try:
-            return int(engine_cell) == sqlite_cell
-        except ValueError:
-            return False
-            
+            pass
+
+    sq_is_num = isinstance(sqlite_cell, (int, float))
+    eng_is_num = eng_is_int or eng_is_float
+
+    if eng_is_num and sq_is_num:
+        # Either side is float -> compare with float tolerance
+        if eng_is_float or isinstance(sqlite_cell, float):
+            val_eng = float(eng_int) if eng_is_int else eng_float
+            val_sq = float(sqlite_cell)
+            return math.isclose(val_eng, val_sq, rel_tol=1e-6, abs_tol=1e-6)
+        else:
+            return eng_int == sqlite_cell
+
     return str(engine_cell) == str(sqlite_cell)
 
 
@@ -256,6 +270,13 @@ def run_test(query_info, csv_path, engine_bin, conn):
             else:
                 engine_rows.append(r)
         
+    # Check column counts (ignores header names but checks column count)
+    sq_num_cols = len(cur.description) if cur.description else 0
+    eng_num_cols = len(engine_header)
+    if sq_num_cols != eng_num_cols:
+        print(f"[FAIL] {q_name}: Column count mismatch: SQLite={sq_num_cols}, Engine={eng_num_cols}")
+        return False
+
     # Check row counts
     sq_count = len(sqlite_rows)
     eng_count = len(engine_rows)

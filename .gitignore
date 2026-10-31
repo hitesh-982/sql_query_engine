@@ -3,6 +3,7 @@ engine
 sqlparse
 sqlparse_sanitized
 test_lexer
+test_eval
 tests/data/
 __pycache__/
 *.pyc
