@@ -26,6 +26,7 @@ int main(int argc, char* argv[]) {
     bool mode_sql = false;
     bool opt_explain = false;
     bool opt_no_output = false;
+    size_t opt_max_groups = 0;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -47,6 +48,8 @@ int main(int argc, char* argv[]) {
             opt_explain = true;
         } else if (arg == "--no-output") {
             opt_no_output = true;
+        } else if (arg == "--max-groups" && i + 1 < argc) {
+            opt_max_groups = static_cast<size_t>(std::stoull(argv[++i]));
         } else {
             std::cerr << "Error: unrecognized argument '" << arg << "'\n";
             return 2;
@@ -74,7 +77,7 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        Plan plan = buildPlan(stmt, table_arg);
+        Plan plan = buildPlan(stmt, table_arg, opt_max_groups);
 
         if (opt_explain) {
             plan.explain(stdout);

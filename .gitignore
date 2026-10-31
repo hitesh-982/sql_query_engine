@@ -4,6 +4,7 @@ sqlparse
 sqlparse_sanitized
 test_lexer
 test_eval
+test_agg
 tests/data/
 __pycache__/
 *.pyc

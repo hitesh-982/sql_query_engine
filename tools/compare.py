@@ -66,11 +66,13 @@ def infer_column_types(csv_path):
                     
                 # Check float
                 is_f = False
-                try:
-                    float(val)
-                    is_f = True
-                except ValueError:
-                    is_f = False
+                val_clean = val.lower().lstrip("+-")
+                if not val_clean.startswith(("nan", "inf", "0x")):
+                    try:
+                        float(val)
+                        is_f = True
+                    except ValueError:
+                        is_f = False
                     
                 if is_f:
                     if not is_i:
@@ -126,7 +128,11 @@ def load_csv_into_sqlite(csv_path, conn):
                         typed_row.append(val)
                 elif col_type == "REAL":
                     try:
-                        typed_row.append(float(val))
+                        fval = float(val)
+                        if math.isnan(fval) or math.isinf(fval):
+                            typed_row.append(val)
+                        else:
+                            typed_row.append(fval)
                     except ValueError:
                         typed_row.append(val)
                 else:
@@ -149,11 +155,15 @@ def make_cell_sort_key(val):
     """
     if val is None or val == "":
         return (0, 0, "")
+    s = str(val)
+    s_clean = s.lower().lstrip("+-")
+    if s_clean.startswith(("nan", "inf")):
+        return (2, 0, s)
     try:
         f = float(val)
         return (1, f, "")
     except (ValueError, TypeError):
-        return (2, 0, str(val))
+        return (2, 0, s)
 
 
 def make_row_sort_key(row):
@@ -182,11 +192,13 @@ def cells_match(engine_cell, sqlite_cell):
         eng_int = int(engine_cell)
         eng_is_int = True
     except ValueError:
-        try:
-            eng_float = float(engine_cell)
-            eng_is_float = True
-        except ValueError:
-            pass
+        val_clean = str(engine_cell).lower().lstrip("+-")
+        if not val_clean.startswith(("nan", "inf")):
+            try:
+                eng_float = float(engine_cell)
+                eng_is_float = True
+            except ValueError:
+                pass
 
     sq_is_num = isinstance(sqlite_cell, (int, float))
     eng_is_num = eng_is_int or eng_is_float
@@ -215,7 +227,9 @@ def rows_match(engine_row, sqlite_row):
 def run_test(query_info, csv_path, engine_bin, conn):
     q_name = query_info.get("name", "unnamed")
     sql = query_info.get("sql", "")
-    raw_args = query_info.get("engine_args", [])
+    raw_args = query_info.get("engine_args")
+    if not raw_args:
+        raw_args = ["--table", "t={CSV}", "--sql", sql]
     ordered = query_info.get("ordered", False)
     
     # Run SQLite

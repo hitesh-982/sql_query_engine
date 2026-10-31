@@ -1,0 +1,5 @@
+[
+  {"sql": "SELECT id, val FROM t", "ordered": false},
+  {"sql": "SELECT COUNT(*), COUNT(val) FROM t", "ordered": true},
+  {"sql": "SELECT val, COUNT(*) FROM t GROUP BY val", "ordered": false}
+]

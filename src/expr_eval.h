@@ -20,6 +20,7 @@ enum class Affinity {
 enum class BoundExprKind {
     LITERAL,
     COLUMN_REF,
+    SLOT_REF,
     UNARY_OP,
     BINARY_OP,
     IS_NULL,
@@ -39,6 +40,9 @@ struct BoundExpr {
     size_t col_idx = 0;
     std::string col_name;
 
+    // SLOT_REF (used by Project / Filter after aggregation)
+    size_t slot_idx = 0;
+
     // UNARY_OP or BINARY_OP
     std::string op;
     std::unique_ptr<BoundExpr> left;
@@ -57,6 +61,15 @@ struct BoundExpr {
     // LIKE
     std::unique_ptr<BoundExpr> like_pattern;
 };
+
+// Structural equality of two bound expression trees
+bool boundExprsEqual(const BoundExpr* a, const BoundExpr* b);
+
+// Deep copy of a bound expression tree
+std::unique_ptr<BoundExpr> cloneBoundExpr(const BoundExpr* expr);
+
+// Check if string is entirely numeric (optional spaces, integer or float)
+bool isEntirelyNumeric(std::string_view s, Value& out_num);
 
 // Bind an AST Expr into a BoundExpr tree.
 // - Resolves column names (case-insensitive).

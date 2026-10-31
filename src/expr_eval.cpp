@@ -13,7 +13,7 @@ static inline std::string toLower(const std::string& str) {
 }
 
 // Check if a string is entirely a well-formed integer or floating-point number
-static bool isEntirelyNumeric(std::string_view s, Value& out_num) {
+bool isEntirelyNumeric(std::string_view s, Value& out_num) {
     size_t idx = 0;
     while (idx < s.size() && (s[idx] == ' ' || s[idx] == '\t' || s[idx] == '\n' || s[idx] == '\r')) {
         idx++;
@@ -336,6 +336,12 @@ Value evalExpr(const BoundExpr* expr, const Tuple& tuple) {
             }
             return makeNull();
 
+        case BoundExprKind::SLOT_REF:
+            if (expr->slot_idx < tuple.values.size()) {
+                return tuple.values[expr->slot_idx];
+            }
+            return makeNull();
+
         case BoundExprKind::IS_NULL: {
             Value v = evalExpr(expr->left.get(), tuple);
             bool is_null = (v.type == V_NULL);
@@ -515,3 +521,79 @@ Value evalExpr(const BoundExpr* expr, const Tuple& tuple) {
     }
     return makeNull();
 }
+
+bool boundExprsEqual(const BoundExpr* a, const BoundExpr* b) {
+    if (a == b) return true;
+    if (!a || !b) return false;
+    if (a->kind != b->kind) return false;
+
+    switch (a->kind) {
+        case BoundExprKind::LITERAL: {
+            if (a->lit_val.type != b->lit_val.type) return false;
+            switch (a->lit_val.type) {
+                case V_NULL: return true;
+                case V_INT: return a->lit_val.i == b->lit_val.i;
+                case V_FLOAT: {
+                    if (std::isnan(a->lit_val.d) && std::isnan(b->lit_val.d)) return true;
+                    return a->lit_val.d == b->lit_val.d;
+                }
+                case V_STRING: return a->lit_val.s == b->lit_val.s;
+            }
+            return false;
+        }
+        case BoundExprKind::COLUMN_REF:
+            return a->col_idx == b->col_idx;
+        case BoundExprKind::SLOT_REF:
+            return a->slot_idx == b->slot_idx;
+        case BoundExprKind::UNARY_OP:
+            return a->op == b->op && boundExprsEqual(a->left.get(), b->left.get());
+        case BoundExprKind::BINARY_OP:
+            return a->op == b->op &&
+                   boundExprsEqual(a->left.get(), b->left.get()) &&
+                   boundExprsEqual(a->right.get(), b->right.get());
+        case BoundExprKind::IS_NULL:
+            return a->is_not == b->is_not && boundExprsEqual(a->left.get(), b->left.get());
+        case BoundExprKind::BETWEEN:
+            return a->is_not == b->is_not &&
+                   boundExprsEqual(a->left.get(), b->left.get()) &&
+                   boundExprsEqual(a->between_low.get(), b->between_low.get()) &&
+                   boundExprsEqual(a->between_high.get(), b->between_high.get());
+        case BoundExprKind::IN_LIST:
+            if (a->is_not != b->is_not) return false;
+            if (!boundExprsEqual(a->left.get(), b->left.get())) return false;
+            if (a->in_list.size() != b->in_list.size()) return false;
+            for (size_t i = 0; i < a->in_list.size(); ++i) {
+                if (!boundExprsEqual(a->in_list[i].get(), b->in_list[i].get())) return false;
+            }
+            return true;
+        case BoundExprKind::LIKE:
+            return a->is_not == b->is_not &&
+                   boundExprsEqual(a->left.get(), b->left.get()) &&
+                   boundExprsEqual(a->like_pattern.get(), b->like_pattern.get());
+    }
+    return false;
+}
+
+std::unique_ptr<BoundExpr> cloneBoundExpr(const BoundExpr* expr) {
+    if (!expr) return nullptr;
+    auto copy = std::make_unique<BoundExpr>();
+    copy->kind = expr->kind;
+    copy->affinity = expr->affinity;
+    copy->lit_val = expr->lit_val;
+    copy->col_idx = expr->col_idx;
+    copy->col_name = expr->col_name;
+    copy->slot_idx = expr->slot_idx;
+    copy->op = expr->op;
+    copy->is_not = expr->is_not;
+
+    if (expr->left) copy->left = cloneBoundExpr(expr->left.get());
+    if (expr->right) copy->right = cloneBoundExpr(expr->right.get());
+    if (expr->between_low) copy->between_low = cloneBoundExpr(expr->between_low.get());
+    if (expr->between_high) copy->between_high = cloneBoundExpr(expr->between_high.get());
+    for (const auto& item : expr->in_list) {
+        copy->in_list.push_back(cloneBoundExpr(item.get()));
+    }
+    if (expr->like_pattern) copy->like_pattern = cloneBoundExpr(expr->like_pattern.get());
+    return copy;
+}
+

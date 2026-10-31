@@ -4,7 +4,7 @@ CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 SRCS_PARSER = src/sql_lexer.cpp src/sql_ast.cpp src/sql_parser.cpp
 OBJS_PARSER = $(SRCS_PARSER:.cpp=.o)
 
-SRCS_CORE = src/csv_scan.cpp src/value.cpp src/expr_eval.cpp src/ops_basic.cpp src/planner.cpp $(SRCS_PARSER)
+SRCS_CORE = src/csv_scan.cpp src/value.cpp src/expr_eval.cpp src/ops_basic.cpp src/ops_agg.cpp src/planner.cpp $(SRCS_PARSER)
 OBJS_CORE = $(SRCS_CORE:.cpp=.o)
 
 SRCS_ENGINE = src/main.cpp $(SRCS_CORE)
@@ -19,7 +19,10 @@ OBJS_TEST_LEXER = src/test_lexer.o src/sql_lexer.o
 SRCS_TEST_EVAL = tests/test_eval.cpp $(SRCS_CORE)
 OBJS_TEST_EVAL = tests/test_eval.o $(OBJS_CORE)
 
-all: engine sqlparse test_lexer test_eval
+SRCS_TEST_AGG = tests/test_agg.cpp $(SRCS_CORE)
+OBJS_TEST_AGG = tests/test_agg.o $(OBJS_CORE)
+
+all: engine sqlparse test_lexer test_eval test_agg
 
 engine: $(OBJS_ENGINE)
 	$(CXX) $(CXXFLAGS) -o $@ $^
@@ -33,6 +36,9 @@ test_lexer: $(OBJS_TEST_LEXER)
 test_eval: $(OBJS_TEST_EVAL)
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
+test_agg: $(OBJS_TEST_AGG)
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
 # Target with AddressSanitizer and UndefinedBehaviorSanitizer for fuzz testing
 sqlparse_sanitized: $(SRCS_SQLPARSE)
 	$(CXX) $(CXXFLAGS) -fsanitize=address,undefined -o $@ $^
@@ -41,6 +47,6 @@ sqlparse_sanitized: $(SRCS_SQLPARSE)
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f src/*.o tests/*.o engine sqlparse test_lexer test_eval sqlparse_sanitized
+	rm -f src/*.o tests/*.o engine sqlparse test_lexer test_eval test_agg sqlparse_sanitized
 
 .PHONY: all clean

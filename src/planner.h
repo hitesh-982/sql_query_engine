@@ -26,10 +26,17 @@ struct Plan {
     bool has_limit = false;
     bool has_filter = false;
 
+    // Aggregate query info
+    bool has_aggregate = false;
+    std::vector<std::string> group_by_sqls;
+    std::vector<std::string> aggregate_sqls;
+    bool has_having = false;
+    std::string having_sql;
+
     void explain(FILE* out) const;
 };
 
 // Build an executable execution plan from a parsed SelectStmt
-Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg);
+Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups = 0);
 
 #endif // PLANNER_H

@@ -37,6 +37,9 @@ bool parseDouble(std::string_view f, double& out) {
     if (check.empty() || (!(check.front() >= '0' && check.front() <= '9') && check.front() != '.')) {
         return false;
     }
+    if (check.size() >= 2 && check[0] == '0' && (check[1] == 'x' || check[1] == 'X')) {
+        return false;
+    }
 
     // std::from_chars for double is supported by modern POSIX C++17 compilers (Clang/GCC).
     // It avoids locale lookups and does not require a null-terminated string buffer.

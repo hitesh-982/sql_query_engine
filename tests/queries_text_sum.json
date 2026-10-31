@@ -1,0 +1,5 @@
+[
+  {"sql": "SELECT SUM(val), AVG(val), COUNT(val) FROM t", "ordered": true},
+  {"sql": "SELECT COUNT(*) FROM t", "ordered": true},
+  {"sql": "SELECT MIN(val), MAX(val) FROM t", "ordered": true}
+]
