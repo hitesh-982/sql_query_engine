@@ -53,7 +53,22 @@ struct Plan {
     void explain(FILE* out) const;
 };
 
+struct PlanOptions {
+    size_t max_groups = 0;
+    size_t memory_limit_mb = 512;
+    std::string tmp_dir = "/tmp";
+    bool sort_stats = false;
+    size_t sort_fan_in = 64;
+};
+
 // Build an executable execution plan from a parsed SelectStmt
-Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups = 0);
+Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, const PlanOptions& options);
+
+// Backwards-compatible overload
+inline Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups = 0) {
+    PlanOptions options;
+    options.max_groups = max_groups;
+    return buildPlan(stmt, table_arg, options);
+}
 
 #endif // PLANNER_H

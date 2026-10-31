@@ -12,7 +12,11 @@ else
     PYTHON="python"
 fi
 
-DATA_5M="$REPO_ROOT/tests/data/data_5m.csv"
+if [ -f "$REPO_ROOT/mid.csv" ]; then
+    DATA_5M="$REPO_ROOT/mid.csv"
+else
+    DATA_5M="$REPO_ROOT/tests/data/data_5m.csv"
+fi
 if [ ! -f "$DATA_5M" ]; then
     echo "--- Generating 5M-row dataset ($DATA_5M) ---"
     "$PYTHON" tools/gen_data.py --rows 5000000 --out "$DATA_5M" --seed 42
@@ -56,6 +60,10 @@ parse_time_rss "$TMP_DIR/distinct.time"
 echo "4. Aggregate + Sort + Limit: SELECT city, COUNT(*) AS n FROM t GROUP BY city ORDER BY n DESC, city LIMIT 5"
 $TIME_CMD "$ENGINE_BIN" --table t="$DATA_5M" --sql "SELECT city, COUNT(*) AS n FROM t GROUP BY city ORDER BY n DESC, city LIMIT 5" > "$TMP_DIR/agg.out" 2> "$TMP_DIR/agg.time"
 parse_time_rss "$TMP_DIR/agg.time"
+
+echo "5. External Sort (--memory-limit-mb 64): SELECT id, amount FROM t ORDER BY amount DESC, id"
+$TIME_CMD "$ENGINE_BIN" --table t="$DATA_5M" --sql "SELECT id, amount FROM t ORDER BY amount DESC, id" --memory-limit-mb 64 --sort-stats --no-output 2> "$TMP_DIR/ext_sort.time"
+parse_time_rss "$TMP_DIR/ext_sort.time"
 
 echo "--- Verifying Top-10 output matches first 10 data rows of full sort ---"
 tail -n +2 "$TMP_DIR/top10.out" | head -n 10 > "$TMP_DIR/top10_data.txt"

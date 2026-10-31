@@ -313,7 +313,7 @@ static std::unique_ptr<BoundExpr> rewritePostAggregateExpr(
     std::exit(2);
 }
 
-Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups) {
+Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, const PlanOptions& options) {
     Plan plan;
 
     // Parse table_arg
@@ -606,7 +606,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
 
         if (stmt.distinct) {
             plan.has_distinct = true;
-            op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, max_groups);
+            op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, options.max_groups);
         }
 
         if (!stmt.order_by.empty()) {
@@ -630,7 +630,16 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
             }
             plan.sort_is_top_n = (top_n >= 0);
             plan.sort_top_n = top_n;
-            op = std::make_unique<SortOperator>(std::move(op), std::move(sort_terms), top_n);
+            size_t mem_bytes = options.memory_limit_mb * 1024ULL * 1024ULL;
+            op = std::make_unique<SortOperator>(
+                std::move(op),
+                std::move(sort_terms),
+                top_n,
+                mem_bytes,
+                options.tmp_dir,
+                options.sort_stats,
+                options.sort_fan_in
+            );
         }
 
         if (stmt.limit.has_value() || stmt.offset.has_value()) {
@@ -823,7 +832,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
         std::move(op),
         std::move(bound_group_by),
         std::move(agg_specs),
-        max_groups
+        options.max_groups
     );
 
     if (bound_having) {
@@ -838,7 +847,7 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
 
     if (stmt.distinct) {
         plan.has_distinct = true;
-        op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, max_groups);
+        op = std::make_unique<DistinctOperator>(std::move(op), plan.visible_width, options.max_groups);
     }
 
     if (!stmt.order_by.empty()) {
@@ -862,7 +871,16 @@ Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_
         }
         plan.sort_is_top_n = (top_n >= 0);
         plan.sort_top_n = top_n;
-        op = std::make_unique<SortOperator>(std::move(op), std::move(sort_terms), top_n);
+        size_t mem_bytes = options.memory_limit_mb * 1024ULL * 1024ULL;
+        op = std::make_unique<SortOperator>(
+            std::move(op),
+            std::move(sort_terms),
+            top_n,
+            mem_bytes,
+            options.tmp_dir,
+            options.sort_stats,
+            options.sort_fan_in
+        );
     }
 
     if (stmt.limit.has_value() || stmt.offset.has_value()) {

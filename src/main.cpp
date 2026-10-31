@@ -27,6 +27,16 @@ int main(int argc, char* argv[]) {
     bool opt_explain = false;
     bool opt_no_output = false;
     size_t opt_max_groups = 0;
+    size_t opt_memory_limit_mb = 512;
+    std::string opt_tmp_dir;
+    const char* env_tmp = std::getenv("TMPDIR");
+    if (env_tmp && env_tmp[0] != '\0') {
+        opt_tmp_dir = env_tmp;
+    } else {
+        opt_tmp_dir = "/tmp";
+    }
+    bool opt_sort_stats = false;
+    size_t opt_sort_fan_in = 64;
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
@@ -50,6 +60,38 @@ int main(int argc, char* argv[]) {
             opt_no_output = true;
         } else if (arg == "--max-groups" && i + 1 < argc) {
             opt_max_groups = static_cast<size_t>(std::stoull(argv[++i]));
+        } else if (arg == "--memory-limit-mb" && i + 1 < argc) {
+            std::string val_str = argv[++i];
+            try {
+                size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size() || val <= 0) {
+                    std::cerr << "Error: --memory-limit-mb must be a positive integer (got '" << val_str << "')\n";
+                    return 2;
+                }
+                opt_memory_limit_mb = static_cast<size_t>(val);
+            } catch (...) {
+                std::cerr << "Error: --memory-limit-mb must be a positive integer (got '" << val_str << "')\n";
+                return 2;
+            }
+        } else if (arg == "--tmp-dir" && i + 1 < argc) {
+            opt_tmp_dir = argv[++i];
+        } else if (arg == "--sort-stats") {
+            opt_sort_stats = true;
+        } else if (arg == "--sort-fan-in" && i + 1 < argc) {
+            std::string val_str = argv[++i];
+            try {
+                size_t pos = 0;
+                long long val = std::stoll(val_str, &pos);
+                if (pos != val_str.size() || val < 2) {
+                    std::cerr << "Error: --sort-fan-in must be an integer >= 2 (got '" << val_str << "')\n";
+                    return 2;
+                }
+                opt_sort_fan_in = static_cast<size_t>(val);
+            } catch (...) {
+                std::cerr << "Error: --sort-fan-in must be an integer >= 2 (got '" << val_str << "')\n";
+                return 2;
+            }
         } else {
             std::cerr << "Error: unrecognized argument '" << arg << "'\n";
             return 2;
@@ -77,7 +119,14 @@ int main(int argc, char* argv[]) {
             return 1;
         }
 
-        Plan plan = buildPlan(stmt, table_arg, opt_max_groups);
+        PlanOptions plan_options;
+        plan_options.max_groups = opt_max_groups;
+        plan_options.memory_limit_mb = opt_memory_limit_mb;
+        plan_options.tmp_dir = opt_tmp_dir;
+        plan_options.sort_stats = opt_sort_stats;
+        plan_options.sort_fan_in = opt_sort_fan_in;
+
+        Plan plan = buildPlan(stmt, table_arg, plan_options);
 
         if (opt_explain) {
             plan.explain(stdout);

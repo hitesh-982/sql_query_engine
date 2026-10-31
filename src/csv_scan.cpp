@@ -82,6 +82,16 @@ size_t CsvScanner::fileSize() const {
     return size_;
 }
 
+void CsvScanner::setNeededColumns(const std::vector<size_t>& needed_cols) {
+    filtering_needed_cols_ = true;
+    needed_cols_mask_.assign(columns_.size(), false);
+    for (size_t c : needed_cols) {
+        if (c < needed_cols_mask_.size()) {
+            needed_cols_mask_[c] = true;
+        }
+    }
+}
+
 void CsvScanner::close() {
     if (data_ && data_ != MAP_FAILED) {
         munmap(data_, size_);
@@ -96,6 +106,8 @@ void CsvScanner::close() {
     data_start_pos_ = 0;
     current_line_num_ = 0;
     columns_.clear();
+    filtering_needed_cols_ = false;
+    needed_cols_mask_.clear();
     // Clearing arena drops all heap strings allocated for unescaped quoted fields
     quote_arena_.clear();
 }
@@ -164,6 +176,9 @@ bool CsvScanner::open(const char* path) {
 
     // Infer column types using up to the first 10,000 data rows
     inferColumnTypes();
+
+    // Drop temporary unescaped strings allocated during type inference
+    quote_arena_.clear();
 
     // Reset scan cursor back to start of data rows
     cur_pos_ = data_start_pos_;
@@ -247,11 +262,13 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
     row.fields.clear();
     const char* p = line_start;
     const char* end = line_start + line_len;
+    size_t col_idx = 0;
 
     while (p <= end) {
         if (p == end) {
             // Trailing comma resulted in an empty field at the end of the line
             row.fields.emplace_back("");
+            col_idx++;
             break;
         }
 
@@ -291,22 +308,31 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
                 // If there are no escaped quotes, point directly into mmap memory
                 row.fields.emplace_back(content_start, raw_content_len);
             } else {
-                // Escaped quotes require unescaping into owned storage.
-                // std::deque ensures previously taken string_views are not invalidated.
-                quote_arena_.emplace_back();
-                std::string& unescaped = quote_arena_.back();
-                unescaped.reserve(raw_content_len);
+                bool is_needed = !filtering_needed_cols_ ||
+                                 (col_idx < needed_cols_mask_.size() && needed_cols_mask_[col_idx]);
+                if (!is_needed) {
+                    // Field contains "" but this column is not needed by the query.
+                    // Avoid allocating in quote_arena_; point directly into mmap raw content.
+                    row.fields.emplace_back(content_start, raw_content_len);
+                } else {
+                    // Escaped quotes require unescaping into owned storage.
+                    // std::deque ensures previously taken string_views are not invalidated.
+                    quote_arena_.emplace_back();
+                    std::string& unescaped = quote_arena_.back();
+                    unescaped.reserve(raw_content_len);
 
-                for (size_t i = 0; i < raw_content_len; ++i) {
-                    if (content_start[i] == '"' && i + 1 < raw_content_len && content_start[i + 1] == '"') {
-                        unescaped.push_back('"');
-                        i++; // Skip second quote
-                    } else {
-                        unescaped.push_back(content_start[i]);
+                    for (size_t i = 0; i < raw_content_len; ++i) {
+                        if (content_start[i] == '"' && i + 1 < raw_content_len && content_start[i + 1] == '"') {
+                            unescaped.push_back('"');
+                            i++; // Skip second quote
+                        } else {
+                            unescaped.push_back(content_start[i]);
+                        }
                     }
+                    row.fields.emplace_back(unescaped.data(), unescaped.size());
                 }
-                row.fields.emplace_back(unescaped.data(), unescaped.size());
             }
+            col_idx++;
 
             // Consume characters up to the next comma delimiter
             while (p < end && *p != ',') {
@@ -322,6 +348,7 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
                 p++;
             }
             row.fields.emplace_back(field_start, static_cast<size_t>(p - field_start));
+            col_idx++;
             if (p < end && *p == ',') {
                 p++; // Skip delimiter
             }

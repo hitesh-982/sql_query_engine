@@ -20,7 +20,11 @@ ScanOperator::~ScanOperator() {
 }
 
 bool ScanOperator::open() {
-    return scanner_.open(file_path_.c_str());
+    if (!scanner_.open(file_path_.c_str())) {
+        return false;
+    }
+    scanner_.setNeededColumns(needed_cols_);
+    return true;
 }
 
 bool ScanOperator::next(Tuple& out) {

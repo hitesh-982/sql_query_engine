@@ -123,7 +123,7 @@ if [ -x "$ENGINE_BIN" ]; then
             return
         fi
 
-        if ! echo "$err_output" | grep -Fiq "$expected_str"; then
+        if ! echo "$err_output" | grep -Fiq -- "$expected_str"; then
             echo "[FAIL] $desc: expected stderr to contain '$expected_str', got: '$err_output'"
             FAILED=1
             return
@@ -223,6 +223,31 @@ if [ -x "$ENGINE_BIN" ]; then
     check_error "DISTINCT max groups limit exceeded (--max-groups)" \
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT DISTINCT city FROM t\" --max-groups 1" \
         4 "maximum number of groups exceeded"
+
+    check_error "--memory-limit-mb 0 invalid" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY id\" --memory-limit-mb 0" \
+        2 "--memory-limit-mb must be a positive integer"
+
+    check_error "--memory-limit-mb -5 invalid" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY id\" --memory-limit-mb -5" \
+        2 "--memory-limit-mb must be a positive integer"
+
+    check_error "--sort-fan-in 1 invalid" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY id\" --sort-fan-in 1" \
+        2 "--sort-fan-in must be an integer >= 2"
+
+    check_error "External sort non-existent --tmp-dir" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY id\" --memory-limit-mb 1 --tmp-dir /nonexistent_dir_12345" \
+        4 "failed to create temporary file in"
+
+    READONLY_DIR="$REPO_ROOT/tests/data/readonly_tmp_test"
+    mkdir -p "$READONLY_DIR"
+    chmod 555 "$READONLY_DIR"
+    check_error "External sort read-only --tmp-dir" \
+        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t ORDER BY id\" --memory-limit-mb 1 --tmp-dir '$READONLY_DIR'" \
+        4 "failed to create temporary file in"
+    chmod 755 "$READONLY_DIR"
+    rm -rf "$READONLY_DIR"
 fi
 
 # 5. Run compare.py against engine
@@ -263,6 +288,63 @@ if [ -x "$ENGINE_BIN" ]; then
         FAILED=1
     else
         echo "[OK] GROUP BY + LIMIT row count verified (5 data rows)"
+    fi
+
+    # Test external sort (force spill with --memory-limit-mb 1 --sort-fan-in 4)
+    echo "Testing external merge sort (--memory-limit-mb 1) on 100k dataset..."
+    if ! "$PYTHON" tools/compare.py --csv "$DATA_100K" --engine "$ENGINE_BIN" --queries tests/queries_external_sort.json; then
+        FAILED=1
+    fi
+
+    # Test temp file cleanup (no leftover temp files after query)
+    echo "Testing external sort temp file cleanup..."
+    CLEANUP_TMP_DIR=$(mktemp -d)
+    "$ENGINE_BIN" --table t="$DATA_100K" --sql "SELECT id, amount FROM t ORDER BY amount DESC, id LIMIT 2000" --memory-limit-mb 1 --tmp-dir "$CLEANUP_TMP_DIR" --no-output
+    LEFTOVER_COUNT=$(ls -A "$CLEANUP_TMP_DIR" | wc -l)
+    rm -rf "$CLEANUP_TMP_DIR"
+    if [ "$LEFTOVER_COUNT" -ne 0 ]; then
+        echo "[FAIL] Leftover temp files found in tmp dir: $LEFTOVER_COUNT"
+        FAILED=1
+    else
+        echo "[OK] No leftover temp files in tmp-dir"
+    fi
+
+    # Scale verification under ulimit -n 256 (if mid.csv or data_5m.csv is present)
+    SCALE_CSV=""
+    if [ -f "$REPO_ROOT/mid.csv" ]; then
+        SCALE_CSV="$REPO_ROOT/mid.csv"
+    elif [ -f "$REPO_ROOT/tests/data/data_5m.csv" ]; then
+        SCALE_CSV="$REPO_ROOT/tests/data/data_5m.csv"
+    fi
+    if [ -n "$SCALE_CSV" ]; then
+        echo "Testing 5M row external sort under ulimit -n 256 on $SCALE_CSV..."
+        (
+            ulimit -n 256
+            TMP_SCALE_DIR=$(mktemp -d)
+            trap 'rm -rf "$TMP_SCALE_DIR"' EXIT
+            
+            # Query 1: SELECT id, city, amount FROM t ORDER BY amount DESC, id
+            echo "  Scale query 1: id, city, amount ORDER BY amount DESC, id..."
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT id, city, amount FROM t ORDER BY amount DESC, id" > "$TMP_SCALE_DIR/q1_inmem.out"
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT id, city, amount FROM t ORDER BY amount DESC, id" --memory-limit-mb 1 --tmp-dir "$TMP_SCALE_DIR" --sort-stats > "$TMP_SCALE_DIR/q1_ext.out"
+            diff -q "$TMP_SCALE_DIR/q1_inmem.out" "$TMP_SCALE_DIR/q1_ext.out"
+            
+            # Query 2: SELECT city, id FROM t ORDER BY city, id
+            echo "  Scale query 2: city, id ORDER BY city, id..."
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT city, id FROM t ORDER BY city, id" > "$TMP_SCALE_DIR/q2_inmem.out"
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT city, id FROM t ORDER BY city, id" --memory-limit-mb 1 --tmp-dir "$TMP_SCALE_DIR" --sort-stats > "$TMP_SCALE_DIR/q2_ext.out"
+            diff -q "$TMP_SCALE_DIR/q2_inmem.out" "$TMP_SCALE_DIR/q2_ext.out"
+
+            # Query 3: SELECT id, amount FROM t ORDER BY qty DESC, id (hidden column)
+            echo "  Scale query 3: id, amount ORDER BY qty DESC, id (hidden sort col)..."
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT id, amount FROM t ORDER BY qty DESC, id" > "$TMP_SCALE_DIR/q3_inmem.out"
+            "$ENGINE_BIN" --table t="$SCALE_CSV" --sql "SELECT id, amount FROM t ORDER BY qty DESC, id" --memory-limit-mb 1 --tmp-dir "$TMP_SCALE_DIR" --sort-stats > "$TMP_SCALE_DIR/q3_ext.out"
+            diff -q "$TMP_SCALE_DIR/q3_inmem.out" "$TMP_SCALE_DIR/q3_ext.out"
+            echo "[OK] 5M rows under ulimit -n 256: all 3 queries byte-for-byte identical to in-memory!"
+        ) || {
+            echo "[FAIL] 5M row external sort under ulimit -n 256 failed!"
+            FAILED=1
+        }
     fi
 fi
 

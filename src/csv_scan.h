@@ -36,6 +36,10 @@ public:
     // Returns column index by name, or -1 if missing
     int columnIndex(const std::string& name) const;
 
+    // Configures which columns are needed by the query.
+    // If set, unescaping of quoted fields with "" is only performed for needed columns.
+    void setNeededColumns(const std::vector<size_t>& needed_cols);
+
     // Unmaps memory and releases resources
     void close();
 
@@ -51,6 +55,11 @@ private:
     size_t current_line_num_;
 
     std::vector<Column> columns_;
+
+    // Set of columns requested by the query. If filtering_needed_cols_ is true,
+    // quoted fields containing "" in unneeded columns are not copied or unescaped.
+    bool filtering_needed_cols_ = false;
+    std::vector<bool> needed_cols_mask_;
 
     // Arena for unescaped quoted fields. std::deque guarantees pointer stability
     // across push_back operations so string_view references remain valid until close().

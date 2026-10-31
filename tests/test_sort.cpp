@@ -7,15 +7,25 @@
 #include <iostream>
 #include <cassert>
 #include <vector>
+#include <deque>
 #include <random>
 #include <algorithm>
 #include <string>
+#include <fcntl.h>
+#include <unistd.h>
 
 // A mock operator that yields a predefined list of tuples
 class MockOperator : public Operator {
 public:
-    MockOperator(std::vector<Tuple> rows, std::vector<std::string> col_names = {"c0", "c1", "c2"})
-        : rows_(std::move(rows)), col_names_(std::move(col_names)) {}
+    MockOperator(std::vector<Tuple> rows, std::vector<std::string> col_names = {})
+        : rows_(std::move(rows)), col_names_(std::move(col_names)) {
+        if (col_names_.empty()) {
+            size_t w = rows_.empty() ? 1 : rows_[0].values.size();
+            for (size_t i = 0; i < w; ++i) {
+                col_names_.push_back("c" + std::to_string(i));
+            }
+        }
+    }
 
     bool open() override {
         cursor_ = 0;
@@ -366,12 +376,243 @@ void testDistinct() {
     std::cout << "  -> DistinctOperator tests OK.\n";
 }
 
+void testExternalSort() {
+    std::cout << "Testing External Merge Sort...\n";
+
+    // Helper lambda to compare in-memory sort vs external sort output
+    auto runAndCompare = [](
+        const std::vector<Tuple>& input_data,
+        const std::vector<SortTerm>& terms,
+        size_t mem_limit,
+        size_t fan_in,
+        size_t* out_runs = nullptr,
+        size_t* out_passes = nullptr
+    ) {
+        // 1. Run in-memory sort (large limit)
+        std::vector<Tuple> in_mem_rows;
+        std::deque<std::string> in_mem_arena;
+        {
+            auto mock = std::make_unique<MockOperator>(input_data);
+            SortOperator sorter(std::move(mock), terms, -1, 1024ULL * 1024 * 1024);
+            assert(sorter.open());
+            Tuple t;
+            while (sorter.next(t)) {
+                Tuple copy;
+                for (const auto& v : t.values) {
+                    if (v.type == V_STRING) {
+                        in_mem_arena.push_back(std::string(v.s));
+                        copy.values.push_back(makeString(in_mem_arena.back()));
+                    } else {
+                        copy.values.push_back(v);
+                    }
+                }
+                in_mem_rows.push_back(std::move(copy));
+            }
+            sorter.close();
+        }
+
+        // 2. Run external sort (small limit)
+        std::vector<Tuple> ext_rows;
+        std::deque<std::string> ext_arena;
+        {
+            auto mock = std::make_unique<MockOperator>(input_data);
+            SortOperator sorter(std::move(mock), terms, -1, mem_limit, "/tmp", false, fan_in);
+            assert(sorter.open());
+            if (out_runs) *out_runs = sorter.initialRunsCount();
+            if (out_passes) *out_passes = sorter.mergePassesCount();
+
+            Tuple t;
+            while (sorter.next(t)) {
+                Tuple copy;
+                for (const auto& v : t.values) {
+                    if (v.type == V_STRING) {
+                        ext_arena.push_back(std::string(v.s));
+                        copy.values.push_back(makeString(ext_arena.back()));
+                    } else {
+                        copy.values.push_back(v);
+                    }
+                }
+                ext_rows.push_back(std::move(copy));
+            }
+            sorter.close();
+        }
+
+        assert(in_mem_rows.size() == ext_rows.size() && "Row count mismatch");
+        for (size_t r = 0; r < in_mem_rows.size(); ++r) {
+            const auto& row_a = in_mem_rows[r].values;
+            const auto& row_b = ext_rows[r].values;
+            assert(row_a.size() == row_b.size() && "Column count mismatch");
+            for (size_t c = 0; c < row_a.size(); ++c) {
+                if (row_a[c].type != row_b[c].type) {
+                    std::cerr << "Mismatch at row " << r << " col " << c << " type: in_mem="
+                              << (int)row_a[c].type << " ext=" << (int)row_b[c].type << "\n";
+                    assert(false);
+                }
+                switch (row_a[c].type) {
+                    case V_NULL:
+                        break;
+                    case V_INT:
+                        if (row_a[c].i != row_b[c].i) {
+                            std::cerr << "Mismatch at row " << r << " col " << c << " INT: in_mem="
+                                      << row_a[c].i << " ext=" << row_b[c].i << "\n";
+                            assert(false);
+                        }
+                        break;
+                    case V_FLOAT:
+                        if (row_a[c].d != row_b[c].d) {
+                            std::cerr << "Mismatch at row " << r << " col " << c << " FLOAT: in_mem="
+                                      << row_a[c].d << " ext=" << row_b[c].d << "\n";
+                            assert(false);
+                        }
+                        break;
+                    case V_STRING:
+                        if (row_a[c].s != row_b[c].s) {
+                            std::cerr << "Mismatch at row " << r << " col " << c << " STRING: in_mem='"
+                                      << row_a[c].s << "' ext='" << row_b[c].s << "'\n";
+                            assert(false);
+                        }
+                        break;
+                }
+            }
+        }
+    };
+
+    // 1. Empty input
+    std::cout << "  Subtest 1: Empty input\n";
+    {
+        std::vector<Tuple> empty_data;
+        std::vector<SortTerm> terms = {{0, false}};
+        size_t runs = 0, passes = 0;
+        runAndCompare(empty_data, terms, 100, 64, &runs, &passes);
+        assert(runs == 0 && passes == 0 && "Empty input should produce 0 runs");
+    }
+
+    // 2. Exactly 1 run
+    std::cout << "  Subtest 2: Exactly 1 run\n";
+    {
+        std::vector<Tuple> data = {
+            {{makeInt(5), makeString("e")}},
+            {{makeInt(2), makeString("b")}},
+            {{makeInt(4), makeString("d")}},
+            {{makeInt(1), makeString("a")}},
+            {{makeInt(3), makeString("c")}}
+        };
+        std::vector<SortTerm> terms = {{0, false}};
+        std::vector<Tuple> two_rows = {
+            {{makeInt(2)}}, {{makeInt(1)}}
+        };
+        size_t runs = 0, passes = 0;
+        runAndCompare(two_rows, {{0, false}}, 60, 64, &runs, &passes);
+        assert(runs == 2 && "Expected 2 initial runs");
+    }
+
+    // Exactly 1 run case: 1 row with limit forcing run creation
+    std::cout << "  Subtest 2b: Manual 1 run\n";
+    {
+        int fd = ::open("/tmp", O_TMPFILE | O_RDWR, 0600);
+        if (fd < 0) {
+            char tpath[] = "/tmp/test_1run_XXXXXX";
+            fd = ::mkstemp(tpath);
+            ::unlink(tpath);
+        }
+        RunWriter writer(fd);
+        Value v1 = makeInt(10);
+        Value v2 = makeInt(20);
+        writer.writeRecord(0, &v1, 1);
+        writer.writeRecord(1, &v2, 1);
+        writer.flush();
+        ::lseek(fd, 0, SEEK_SET);
+
+        RunReader reader(fd, 1);
+        assert(reader.nextRecord());
+        assert(reader.currentValues()[0].i == 10);
+        assert(reader.nextRecord());
+        assert(reader.currentValues()[0].i == 20);
+        assert(!reader.nextRecord());
+        reader.close();
+    }
+
+    // 3. 200 KB string (exceeds 64 KB read buffer, tests RunReader resize)
+    std::cout << "  Subtest 3: 200 KB string\n";
+    {
+        std::string big_str1(200000, 'A');
+        std::string big_str2(200000, 'B');
+        big_str1[1000] = 'X';
+        big_str2[1000] = 'Y';
+
+        std::vector<Tuple> data = {
+            {{makeInt(2), makeString(big_str2)}},
+            {{makeInt(1), makeString(big_str1)}}
+        };
+        // Small memory limit so each row spills to disk
+        runAndCompare(data, {{0, false}}, 1000, 64);
+    }
+
+    // 4. Empty strings and strings with commas, quotes, newlines
+    std::cout << "  Subtest 4: String edge cases\n";
+    {
+        std::vector<Tuple> data = {
+            {{makeString(""), makeInt(1)}},
+            {{makeString("hello,world"), makeInt(2)}},
+            {{makeString("line1\nline2\r\nline3"), makeInt(3)}},
+            {{makeString("\"quoted\" string with, commas"), makeInt(4)}},
+            {{makeString(""), makeInt(5)}},
+            {{makeString(",,,,\"\"\"\"\n\n"), makeInt(6)}}
+        };
+        runAndCompare(data, {{0, false}, {1, true}}, 120, 64);
+    }
+
+    // 5. INT 1 vs FLOAT 1.0 (types preserved across runs)
+    std::cout << "  Subtest 5: INT 1 vs FLOAT 1.0\n";
+    {
+        std::vector<Tuple> data = {
+            {{makeInt(1), makeString("int_one")}},
+            {{makeFloat(1.0), makeString("float_one")}},
+            {{makeInt(2), makeString("int_two")}},
+            {{makeFloat(2.0), makeString("float_two")}}
+        };
+        // Sort by col 0 ASC, col 1 ASC with small memory limit (forces runs)
+        runAndCompare(data, {{0, false}, {1, false}}, 100, 64);
+    }
+
+    // 6. Duplicate keys across many runs (stable arrival order)
+    std::cout << "  Subtest 6: Duplicate keys arrival\n";
+    {
+        std::vector<Tuple> data;
+        for (int i = 0; i < 100; ++i) {
+            data.push_back({{makeInt(42), makeInt(i)}});
+        }
+        size_t runs = 0;
+        runAndCompare(data, {{0, false}}, 200, 64, &runs);
+        assert(runs >= 40 && "Expected many runs for duplicate key arrival test");
+    }
+
+    // 7. More than 64 runs with fan-in 3 (exercises multi-pass leveled merges)
+    std::cout << "  Subtest 7: >64 runs with fan-in 3\n";
+    {
+        std::vector<Tuple> data;
+        std::mt19937 rng(42);
+        for (int i = 0; i < 200; ++i) {
+            data.push_back({{makeInt(static_cast<long long>(rng() % 1000)), makeString("val_" + std::to_string(i))}});
+        }
+        // Memory limit 200 bytes -> batch capacity ~2 rows -> ~100 runs!
+        // With fan_in = 3, requires log3(100) ~ 5 levels of merge passes!
+        size_t runs = 0, passes = 0;
+        runAndCompare(data, {{0, false}, {1, false}}, 200, 3, &runs, &passes);
+        assert(runs > 64 && "Expected > 64 runs");
+        assert(passes > 1 && "Expected multi-pass merge with fan-in 3");
+    }
+
+    std::cout << "  -> External Merge Sort tests OK.\n";
+}
+
 int main() {
     std::cout << "=== Running test_sort Unit Tests ===\n";
     testComparator();
     testTopNProperty();
     testEdgeCases();
     testDistinct();
+    testExternalSort();
     std::cout << "All test_sort tests PASSED!\n";
     return 0;
 }
