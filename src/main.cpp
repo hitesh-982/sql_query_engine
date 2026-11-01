@@ -9,11 +9,133 @@
 #include <chrono>
 #include <sstream>
 #include <algorithm>
+#include <cstring>
+#include <cstdio>
 
-static void printHeaderField(std::string_view field) {
-    Value v = makeString(field);
-    formatValue(v, stdout);
-}
+class FastOutputBuffer {
+public:
+    static constexpr size_t BUFFER_SIZE = 65536;
+    FastOutputBuffer(FILE* out = stdout) : out_(out), pos_(0) {}
+    ~FastOutputBuffer() { flush(); }
+
+    void flush() {
+        if (pos_ > 0) {
+            std::fwrite(buffer_, 1, pos_, out_);
+            pos_ = 0;
+        }
+    }
+
+    inline void writeChar(char c) {
+        if (pos_ >= BUFFER_SIZE) {
+            flush();
+        }
+        buffer_[pos_++] = c;
+    }
+
+    inline void writeString(const char* data, size_t len) {
+        while (len > 0) {
+            if (pos_ == BUFFER_SIZE) {
+                flush();
+            }
+            size_t avail = BUFFER_SIZE - pos_;
+            size_t chunk = std::min(len, avail);
+            std::memcpy(buffer_ + pos_, data, chunk);
+            pos_ += chunk;
+            data += chunk;
+            len -= chunk;
+        }
+    }
+
+    inline void writeStringView(std::string_view sv) {
+        writeString(sv.data(), sv.size());
+    }
+
+    inline void writeInt(long long val) {
+        if (BUFFER_SIZE - pos_ < 32) {
+            flush();
+        }
+        pos_ += formatIntToBuffer(buffer_ + pos_, val);
+    }
+
+    void writeValue(Value v) {
+        switch (v.type) {
+            case V_NULL:
+                return;
+            case V_INT:
+                writeInt(v.i);
+                return;
+            case V_FLOAT: {
+                char buf[64];
+                std::snprintf(buf, sizeof(buf), "%.15g", v.d);
+                bool has_special = false;
+                for (char* p = buf; *p; ++p) {
+                    if (*p == '.' || *p == 'e' || *p == 'E' || *p == 'n' || *p == 'i') {
+                        has_special = true;
+                        break;
+                    }
+                }
+                writeString(buf, std::strlen(buf));
+                if (!has_special) {
+                    writeString(".0", 2);
+                }
+                return;
+            }
+            case V_STRING: {
+                bool needs_quotes = false;
+                for (char c : v.s) {
+                    if (c == ',' || c == '"' || c == '\n' || c == '\r') {
+                        needs_quotes = true;
+                        break;
+                    }
+                }
+                if (!needs_quotes) {
+                    writeString(v.s.data(), v.s.size());
+                } else {
+                    writeChar('"');
+                    for (char c : v.s) {
+                        if (c == '"') {
+                            writeString("\"\"", 2);
+                        } else {
+                            writeChar(c);
+                        }
+                    }
+                    writeChar('"');
+                }
+                return;
+            }
+        }
+    }
+
+private:
+    static size_t formatIntToBuffer(char* dst, long long val) {
+        if (val == 0) {
+            dst[0] = '0';
+            return 1;
+        }
+        char* p = dst;
+        unsigned long long u = static_cast<unsigned long long>(val);
+        if (val < 0) {
+            *p++ = '-';
+            u = 0ULL - u;
+        }
+        char temp[24];
+        int idx = 0;
+        while (u > 0) {
+            temp[idx++] = static_cast<char>('0' + (u % 10));
+            u /= 10;
+        }
+        while (idx > 0) {
+            *p++ = temp[--idx];
+        }
+        return static_cast<size_t>(p - dst);
+    }
+
+    FILE* out_;
+    size_t pos_;
+    char buffer_[BUFFER_SIZE];
+};
+
+
 
 // Executes a built query plan tuple-by-tuple, printing CSV results or timing
 static int executeQuery(const SelectStmt& stmt,
@@ -52,22 +174,25 @@ static int executeQuery(const SelectStmt& stmt,
         return 0;
     }
 
+    FastOutputBuffer out_buf(stdout);
+
     // Print header line
     for (size_t i = 0; i < plan.visible_width; ++i) {
-        if (i > 0) std::putchar(',');
-        printHeaderField(plan.output_headers[i]);
+        if (i > 0) out_buf.writeChar(',');
+        out_buf.writeValue(makeString(plan.output_headers[i]));
     }
-    std::putchar('\n');
+    out_buf.writeChar('\n');
 
     // Print rows
     while (plan.root->next(tuple)) {
         for (size_t i = 0; i < plan.visible_width; ++i) {
-            if (i > 0) std::putchar(',');
-            formatValue(tuple.values[i], stdout);
+            if (i > 0) out_buf.writeChar(',');
+            out_buf.writeValue(tuple.values[i]);
         }
-        std::putchar('\n');
+        out_buf.writeChar('\n');
         row_count++;
     }
+    out_buf.flush();
     plan.root->close();
     return 0;
 }
@@ -367,25 +492,27 @@ int main(int argc, char* argv[]) {
             col_indices.push_back(found_idx);
         }
 
+        FastOutputBuffer out_buf(stdout);
+
         // Print header line
         for (size_t i = 0; i < requested_cols.size(); ++i) {
-            if (i > 0) std::putchar(',');
-            printHeaderField(requested_cols[i]);
+            if (i > 0) out_buf.writeChar(',');
+            out_buf.writeValue(makeString(requested_cols[i]));
         }
-        std::putchar('\n');
+        out_buf.writeChar('\n');
 
         Row row;
         while (scanner.nextRow(row)) {
             for (size_t i = 0; i < col_indices.size(); ++i) {
-                if (i > 0) std::putchar(',');
+                if (i > 0) out_buf.writeChar(',');
                 int idx = col_indices[i];
                 if (idx < static_cast<int>(row.fields.size())) {
-                    Value v = makeString(row.fields[idx]);
-                    formatValue(v, stdout);
+                    out_buf.writeValue(makeString(row.fields[idx]));
                 }
             }
-            std::putchar('\n');
+            out_buf.writeChar('\n');
         }
+        out_buf.flush();
         return 0;
     }
 
