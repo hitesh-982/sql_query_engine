@@ -67,4 +67,7 @@ asan: $(SRCS_ENGINE)
 clean:
 	rm -f src/*.o tests/*.o engine sqlparse test_lexer test_eval test_agg test_sort test_join sqlparse_sanitized engine_profile engine_asan gmon.out
 
-.PHONY: all clean profile asan
+web: engine
+	python3 tools/side_by_side_app.py 8080
+
+.PHONY: all clean profile asan web

@@ -15,6 +15,63 @@ static void printHeaderField(std::string_view field) {
     formatValue(v, stdout);
 }
 
+// Executes a built query plan tuple-by-tuple, printing CSV results or timing
+static int executeQuery(const SelectStmt& stmt,
+                        const std::vector<std::string>& table_args,
+                        const PlanOptions& plan_options,
+                        bool opt_explain,
+                        bool opt_no_output) {
+    Plan plan = buildPlan(stmt, table_args, plan_options);
+
+    if (opt_explain) {
+        plan.explain(stdout);
+        return 0;
+    }
+
+    auto start_time = std::chrono::steady_clock::now();
+
+    if (!plan.root->open()) {
+        std::cerr << "Error: failed to open query operator\n";
+        return 2;
+    }
+
+    Tuple tuple;
+    long long row_count = 0;
+
+    if (opt_no_output) {
+        while (plan.root->next(tuple)) {
+            row_count++;
+        }
+        plan.root->close();
+
+        auto end_time = std::chrono::steady_clock::now();
+        double elapsed_sec = std::chrono::duration<double>(end_time - start_time).count();
+        std::fprintf(stderr, "%lld rows in %.4fs (%.1f rows/s)\n",
+                     row_count, elapsed_sec,
+                     elapsed_sec > 0.0 ? (row_count / elapsed_sec) : 0.0);
+        return 0;
+    }
+
+    // Print header line
+    for (size_t i = 0; i < plan.visible_width; ++i) {
+        if (i > 0) std::putchar(',');
+        printHeaderField(plan.output_headers[i]);
+    }
+    std::putchar('\n');
+
+    // Print rows
+    while (plan.root->next(tuple)) {
+        for (size_t i = 0; i < plan.visible_width; ++i) {
+            if (i > 0) std::putchar(',');
+            formatValue(tuple.values[i], stdout);
+        }
+        std::putchar('\n');
+        row_count++;
+    }
+    plan.root->close();
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
     std::string file_path;
     std::string select_cols;
@@ -24,6 +81,7 @@ int main(int argc, char* argv[]) {
     bool mode_schema = false;
     bool mode_count = false;
     bool mode_sql = false;
+    bool mode_interactive = false;
     bool opt_explain = false;
     bool opt_no_output = false;
     bool opt_no_pushdown = false;
@@ -43,7 +101,33 @@ int main(int argc, char* argv[]) {
 
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
-        if (arg == "--file" && i + 1 < argc) {
+        if (arg == "--help" || arg == "-h") {
+            std::cout << "SQL Query Engine v1.0 (Phase 8)\n\n"
+                      << "Usage:\n"
+                      << "  ./engine --table <name>=<file.csv> ... --sql \"<query>\"   Execute SQL query\n"
+                      << "  ./engine --table <name>=<file.csv> ... --interactive     Interactive SQL shell\n"
+                      << "  ./engine --web [port]                                   Launch Web UI Studio (default port 8080)\n"
+                      << "  ./engine --file <file.csv> --schema                     Inspect inferred column types\n"
+                      << "  ./engine --file <file.csv> --count                      Benchmark CSV scan throughput\n"
+                      << "  ./engine --file <file.csv> --select col1,col2           Filter columns\n\n"
+                      << "Options:\n"
+                      << "  --explain            Print physical operator plan tree\n"
+                      << "  --memory-limit-mb N  Set external sort memory threshold (MB)\n"
+                      << "  --no-pushdown        Disable filter pushdown optimization\n"
+                      << "  --no-join-swap       Disable hash join probe/build swap\n"
+                      << "  --sort-stats         Print external merge sort telemetry\n"
+                      << "  --join-stats         Print hash join execution telemetry\n";
+            return 0;
+        } else if (arg == "--web" || arg == "--serve") {
+            int port = 8080;
+            if (i + 1 < argc && argv[i + 1][0] != '-') {
+                try { port = std::stoi(argv[++i]); } catch (...) {}
+            }
+            std::string cmd = "python3 tools/side_by_side_app.py " + std::to_string(port);
+            return std::system(cmd.c_str());
+        } else if (arg == "--interactive" || arg == "-i") {
+            mode_interactive = true;
+        } else if (arg == "--file" && i + 1 < argc) {
             file_path = argv[++i];
         } else if (arg == "--select" && i + 1 < argc) {
             mode_select = true;
@@ -138,54 +222,72 @@ int main(int argc, char* argv[]) {
         plan_options.no_join_swap = opt_no_join_swap;
         plan_options.join_stats = opt_join_stats;
 
-        Plan plan = buildPlan(stmt, table_args, plan_options);
+        return executeQuery(stmt, table_args, plan_options, opt_explain, opt_no_output);
+    }
 
-        if (opt_explain) {
-            plan.explain(stdout);
-            return 0;
+    // ------------------------------------------------------------------------
+    // Mode: Interactive SQL REPL Shell
+    // ------------------------------------------------------------------------
+    if (mode_interactive || (!table_args.empty() && !mode_sql && file_path.empty() && !mode_schema && !mode_count && !mode_select)) {
+        std::cout << "============================================================\n";
+        std::cout << "  SQL Query Engine v1.0 - Interactive Shell\n";
+        std::cout << "  Tables loaded: " << table_args.size() << "\n";
+        for (const auto& t : table_args) {
+            std::cout << "    - " << t << "\n";
         }
+        std::cout << "  Type SQL query ending with ';' | Type 'exit;' to quit.\n";
+        std::cout << "============================================================\n";
 
-        auto start_time = std::chrono::steady_clock::now();
+        PlanOptions plan_options;
+        plan_options.max_groups = opt_max_groups;
+        plan_options.memory_limit_mb = opt_memory_limit_mb;
+        plan_options.tmp_dir = opt_tmp_dir;
+        plan_options.sort_stats = opt_sort_stats;
+        plan_options.sort_fan_in = opt_sort_fan_in;
+        plan_options.no_pushdown = opt_no_pushdown;
+        plan_options.no_join_swap = opt_no_join_swap;
+        plan_options.join_stats = opt_join_stats;
 
-        if (!plan.root->open()) {
-            std::cerr << "Error: failed to open query operator\n";
-            return 2;
-        }
-
-        Tuple tuple;
-        long long row_count = 0;
-
-        if (opt_no_output) {
-            while (plan.root->next(tuple)) {
-                row_count++;
+        std::string buffer;
+        std::string line;
+        while (true) {
+            if (buffer.empty()) {
+                std::cout << "sql> " << std::flush;
+            } else {
+                std::cout << " ... " << std::flush;
             }
-            plan.root->close();
-
-            auto end_time = std::chrono::steady_clock::now();
-            double elapsed_sec = std::chrono::duration<double>(end_time - start_time).count();
-            std::fprintf(stderr, "%lld rows in %.4fs (%.1f rows/s)\n",
-                         row_count, elapsed_sec,
-                         elapsed_sec > 0.0 ? (row_count / elapsed_sec) : 0.0);
-            return 0;
-        }
-
-        // Print header line
-        for (size_t i = 0; i < plan.visible_width; ++i) {
-            if (i > 0) std::putchar(',');
-            printHeaderField(plan.output_headers[i]);
-        }
-        std::putchar('\n');
-
-        // Print rows
-        while (plan.root->next(tuple)) {
-            for (size_t i = 0; i < plan.visible_width; ++i) {
-                if (i > 0) std::putchar(',');
-                formatValue(tuple.values[i], stdout);
+            if (!std::getline(std::cin, line)) {
+                break;
             }
-            std::putchar('\n');
-            row_count++;
+            std::string trimmed = line;
+            while (!trimmed.empty() && std::isspace(static_cast<unsigned char>(trimmed.front()))) trimmed.erase(trimmed.begin());
+            while (!trimmed.empty() && std::isspace(static_cast<unsigned char>(trimmed.back()))) trimmed.pop_back();
+
+            if (trimmed == "exit;" || trimmed == "quit;" || trimmed == "exit" || trimmed == "quit") {
+                break;
+            }
+
+            buffer += " " + line;
+            size_t semi = buffer.find(';');
+            if (semi != std::string::npos) {
+                std::string q = buffer.substr(0, semi);
+                buffer = buffer.substr(semi + 1);
+
+                try {
+                    SqlParser parser(q);
+                    SelectStmt stmt = parser.parseSelect();
+                    auto t0 = std::chrono::steady_clock::now();
+                    executeQuery(stmt, table_args, plan_options, opt_explain, false);
+                    auto t1 = std::chrono::steady_clock::now();
+                    double ms = std::chrono::duration<double, std::milli>(t1 - t0).count();
+                    std::cout << "(" << ms << " ms)\n\n";
+                } catch (const ParseError& e) {
+                    std::cerr << e.what() << "\n";
+                } catch (const std::exception& e) {
+                    std::cerr << "Error: " << e.what() << "\n";
+                }
+            }
         }
-        plan.root->close();
         return 0;
     }
 
