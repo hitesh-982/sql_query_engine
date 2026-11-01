@@ -225,14 +225,14 @@ if [ -x "$ENGINE_BIN" ]; then
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t HAVING id > 5\"" \
         3 "not implemented yet: HAVING clause on a non-aggregate query"
 
-    # Phase 5: Unsupported join syntax (exit 3)
-    check_error "RIGHT JOIN unsupported" \
-        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id\"" \
-        3 "not implemented yet: RIGHT JOIN"
+    # Phase 5: Join parse errors (exit 1)
+    check_error "RIGHT JOIN without ON parse error" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o RIGHT JOIN customers c\"" \
+        1 "expected ON after JOIN table"
 
-    check_error "FULL JOIN unsupported" \
-        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o FULL JOIN customers c ON o.cust_id = c.id\"" \
-        3 "not implemented yet: FULL JOIN"
+    check_error "FULL JOIN without ON parse error" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o FULL JOIN customers c\"" \
+        1 "expected ON after JOIN table"
 
     check_error "USING unsupported" \
         "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o JOIN customers c USING (id)\"" \
@@ -449,17 +449,102 @@ if [ -x "$ENGINE_BIN" ]; then
         fi
     done
 
+    # Phase 5B: RIGHT and FULL outer join comparisons against SQLite
+    echo "--- Running Phase 5B Outer Join Comparisons against SQLite ---"
+    echo "Testing 115 outer join queries on base dataset (default / swapped)..."
+    if ! "$PYTHON" tools/compare.py \
+        --table orders="$JOIN_DATA_DIR/orders.csv" \
+        --table customers="$JOIN_DATA_DIR/customers.csv" \
+        --table products="$JOIN_DATA_DIR/products.csv" \
+        --engine "$ENGINE_BIN" \
+        --queries tests/queries_join_outer.json; then
+        FAILED=1
+    fi
+
+    echo "Testing 115 outer join queries on base dataset (--no-join-swap)..."
+    if ! "$PYTHON" tools/compare.py \
+        --table orders="$JOIN_DATA_DIR/orders.csv" \
+        --table customers="$JOIN_DATA_DIR/customers.csv" \
+        --table products="$JOIN_DATA_DIR/products.csv" \
+        --engine "$ENGINE_BIN" \
+        --queries tests/queries_join_outer.json \
+        --engine-arg=--no-join-swap; then
+        FAILED=1
+    fi
+
+    # Test outer join queries on all 7 edge sets
+    for edge_subdir in "$JOIN_EDGE_DIR"/*; do
+        if [ -d "$edge_subdir" ]; then
+            edge_name=$(basename "$edge_subdir")
+            echo "Testing outer join queries on edge set $edge_name..."
+            p_file="$edge_subdir/products.csv"
+            if [ ! -f "$p_file" ]; then
+                p_file="$JOIN_DATA_DIR/products.csv"
+            fi
+            if ! "$PYTHON" tools/compare.py \
+                --table orders="$edge_subdir/orders.csv" \
+                --table customers="$edge_subdir/customers.csv" \
+                --table products="$p_file" \
+                --engine "$ENGINE_BIN" \
+                --queries tests/queries_join_outer.json; then
+                FAILED=1
+            fi
+        fi
+    done
+
+    # Cross-check: 10 RIGHT queries vs equivalent swapped LEFT queries
+    echo "Testing cross-check (10 RIGHT queries vs equivalent swapped LEFT queries)..."
+    CROSS_CHECK_OK=1
+    CROSS_CHECK_PAIRS=(
+        "SELECT c.id, c.name, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY c.id, o.id|SELECT c.id, c.name, o.id, o.amount FROM customers c LEFT JOIN orders o ON o.cust_id = c.id ORDER BY c.id, o.id"
+        "SELECT c.id, count(o.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.id ORDER BY c.id|SELECT c.id, count(o.id) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id GROUP BY c.id ORDER BY c.id"
+        "SELECT c.region, count(*), sum(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region|SELECT c.region, count(*), sum(o.amount) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region"
+        "SELECT count(*) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL|SELECT count(*) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id WHERE o.id IS NULL"
+        "SELECT c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL ORDER BY c.id|SELECT c.id, c.name FROM customers c LEFT JOIN orders o ON o.cust_id = c.id WHERE o.id IS NULL ORDER BY c.id"
+        "SELECT count(*), count(o.id), count(c.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id|SELECT count(*), count(o.id), count(c.id) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id"
+        "SELECT c.id, max(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.id ORDER BY c.id|SELECT c.id, max(o.amount) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id GROUP BY c.id ORDER BY c.id"
+        "SELECT c.region, min(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region|SELECT c.region, min(o.amount) FROM customers c LEFT JOIN orders o ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region"
+        "SELECT c.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND o.amount > 500 ORDER BY c.id, o.amount|SELECT c.id, o.amount FROM customers c LEFT JOIN orders o ON o.cust_id = c.id AND o.amount > 500 ORDER BY c.id, o.amount"
+        "SELECT DISTINCT c.region FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY c.region|SELECT DISTINCT c.region FROM customers c LEFT JOIN orders o ON o.cust_id = c.id ORDER BY c.region"
+    )
+    TMP_CC_DIR=$(mktemp -d)
+    for pair in "${CROSS_CHECK_PAIRS[@]}"; do
+        q_r="${pair%%|*}"
+        q_l="${pair##*|}"
+        "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --sql "$q_r" > "$TMP_CC_DIR/r.out"
+        "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --sql "$q_l" > "$TMP_CC_DIR/l.out"
+        if ! diff -q "$TMP_CC_DIR/r.out" "$TMP_CC_DIR/l.out" >/dev/null; then
+            echo "[FAIL] Cross-check mismatch for query: $q_r"
+            CROSS_CHECK_OK=0
+            FAILED=1
+        fi
+    done
+    rm -rf "$TMP_CC_DIR"
+    if [ $CROSS_CHECK_OK -eq 1 ]; then
+        echo "[OK] All 10 cross-check queries matched byte-for-byte!"
+    fi
+
     # Self-check: verify identical output with and without --no-pushdown
     echo "Testing filter pushdown self-check (with vs without --no-pushdown)..."
     PUSHDOWN_Q="SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 500 AND c.region = 'North' ORDER BY o.id, c.name"
+    OUTER_PUSHDOWN_Q="SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'North' ORDER BY o.id, c.name"
     TMP_PD_DIR=$(mktemp -d)
     "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --sql "$PUSHDOWN_Q" > "$TMP_PD_DIR/with_pushdown.out"
     "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --no-pushdown --sql "$PUSHDOWN_Q" > "$TMP_PD_DIR/without_pushdown.out"
     if ! diff -q "$TMP_PD_DIR/with_pushdown.out" "$TMP_PD_DIR/without_pushdown.out"; then
-        echo "[FAIL] Pushdown outputs differ!"
+        echo "[FAIL] Inner pushdown outputs differ!"
         FAILED=1
     else
-        echo "[OK] Filter pushdown self-check: outputs are byte-for-byte identical!"
+        echo "[OK] Inner filter pushdown self-check: outputs are byte-for-byte identical!"
+    fi
+
+    "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --sql "$OUTER_PUSHDOWN_Q" > "$TMP_PD_DIR/outer_with_pushdown.out"
+    "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --no-pushdown --sql "$OUTER_PUSHDOWN_Q" > "$TMP_PD_DIR/outer_without_pushdown.out"
+    if ! diff -q "$TMP_PD_DIR/outer_with_pushdown.out" "$TMP_PD_DIR/outer_without_pushdown.out"; then
+        echo "[FAIL] Outer pushdown outputs differ!"
+        FAILED=1
+    else
+        echo "[OK] Outer filter pushdown self-check: outputs are byte-for-byte identical!"
     fi
     rm -rf "$TMP_PD_DIR"
 
@@ -478,6 +563,16 @@ if [ -x "$ENGINE_BIN" ]; then
   {
     "name": "scale_1m_join_anti",
     "sql": "SELECT count(*) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.id IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "scale_1m_right_join_group_by",
+    "sql": "SELECT c.region, count(*), count(o.id), sum(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "scale_1m_full_join_counts",
+    "sql": "SELECT count(*), count(o.id), count(c.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id",
     "ordered": false
   }
 ]

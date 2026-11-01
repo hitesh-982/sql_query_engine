@@ -224,7 +224,7 @@ def rows_match(engine_row, sqlite_row):
     return True
 
 
-def run_test(query_info, table_map, engine_bin, conn):
+def run_test(query_info, table_map, engine_bin, conn, extra_args=None):
     q_name = query_info.get("name", "unnamed")
     sql = query_info.get("sql", "")
     raw_args = query_info.get("engine_args")
@@ -256,6 +256,8 @@ def run_test(query_info, table_map, engine_bin, conn):
         for tname, tpath in table_map.items():
             val = val.replace("{" + tname + "}", tpath)
         engine_cmd.append(val)
+    if extra_args:
+        engine_cmd.extend(extra_args)
     try:
         proc = subprocess.run(
             engine_cmd,
@@ -348,6 +350,7 @@ def main():
     parser.add_argument("--table", action="append", default=[], help="Table definition name=path")
     parser.add_argument("--engine", required=True, help="Path to engine executable")
     parser.add_argument("--queries", required=True, help="Path to queries.json")
+    parser.add_argument("--engine-arg", action="append", default=[], help="Extra argument to pass to engine")
     args = parser.parse_args()
     
     table_map = {}
@@ -376,12 +379,13 @@ def main():
         queries = json.load(f)
         
     conn = sqlite3.connect(":memory:")
+    print(f"Using SQLite version: {sqlite3.sqlite_version}")
     for tname, tpath in table_map.items():
         load_csv_into_sqlite(tpath, conn, tname)
     
     all_passed = True
     for q in queries:
-        ok = run_test(q, table_map, args.engine, conn)
+        ok = run_test(q, table_map, args.engine, conn, args.engine_arg)
         if not ok:
             all_passed = False
             

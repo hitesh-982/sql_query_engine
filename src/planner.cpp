@@ -509,11 +509,16 @@ static std::unique_ptr<BoundExpr> rewritePostAggregateExpr(
 }
 
 bool isTablePushdownLegal(size_t table_idx, const std::vector<JoinClause>& joins) {
-    if (table_idx == 0) return true;
-    if (table_idx - 1 < joins.size()) {
-        return (joins[table_idx - 1].type == JoinType::INNER);
+    for (size_t j = 0; j < joins.size(); ++j) {
+        JoinType jt = joins[j].type;
+        if (jt == JoinType::LEFT || jt == JoinType::FULL) {
+            if (table_idx == j + 1) return false;
+        }
+        if (jt == JoinType::RIGHT || jt == JoinType::FULL) {
+            if (table_idx <= j) return false;
+        }
     }
-    return false;
+    return true;
 }
 
 Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_args, const PlanOptions& options) {
@@ -554,14 +559,6 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
         }
         if (j.is_using) {
             std::cerr << "not implemented yet: USING\n";
-            std::exit(3);
-        }
-        if (j.type == JoinType::RIGHT) {
-            std::cerr << "not implemented yet: RIGHT JOIN\n";
-            std::exit(3);
-        }
-        if (j.type == JoinType::FULL) {
-            std::cerr << "not implemented yet: FULL JOIN\n";
             std::exit(3);
         }
     }
@@ -1056,14 +1053,38 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
 
             bool is_nested_loop = probe_keys.empty();
 
-            // Build swap heuristic: if i == 1 and INNER and fileSize(table 0) < fileSize(table 1)
+            // Build swap heuristic: if !options.no_join_swap && i == 1 && (INNER || RIGHT) && fileSize(table 0) < fileSize(table 1)
             bool swapped = false;
-            if (i == 1 && j.type == JoinType::INNER) {
+            if (!options.no_join_swap && i == 1 && (j.type == JoinType::INNER || j.type == JoinType::RIGHT)) {
                 size_t sz0 = getFileSize(scope.tables[0].csv_path);
                 size_t sz1 = getFileSize(scope.tables[1].csv_path);
                 if (sz0 < sz1) {
                     swapped = true;
                 }
+            }
+
+            bool emit_unmatched_probe = false;
+            bool emit_unmatched_build = false;
+            if (j.type == JoinType::INNER) {
+                emit_unmatched_probe = false;
+                emit_unmatched_build = false;
+            } else if (j.type == JoinType::LEFT) {
+                emit_unmatched_probe = true;
+                emit_unmatched_build = false;
+            } else if (j.type == JoinType::RIGHT) {
+                if (swapped) {
+                    // Swapped RIGHT: probe is table 1 (R, preserved), build is table 0 (L)
+                    emit_unmatched_probe = true;
+                    emit_unmatched_build = false;
+                } else {
+                    // Default RIGHT: probe is L, build is R (preserved)
+                    emit_unmatched_probe = false;
+                    emit_unmatched_build = true;
+                }
+            } else if (j.type == JoinType::FULL) {
+                emit_unmatched_probe = true;
+                emit_unmatched_build = true;
+                swapped = false; // never swapped
             }
 
             // Kept build slots: columns of build child needed above this join
@@ -1081,11 +1102,18 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
             std::sort(kept_build_slots.begin(), kept_build_slots.end());
 
             Plan::JoinPlanInfo join_info;
-            join_info.join_type = (j.type == JoinType::LEFT ? "LEFT" : "INNER");
+            switch (j.type) {
+                case JoinType::INNER: join_info.join_type = "INNER"; break;
+                case JoinType::LEFT:  join_info.join_type = "LEFT";  break;
+                case JoinType::RIGHT: join_info.join_type = "RIGHT"; break;
+                case JoinType::FULL:  join_info.join_type = "FULL";  break;
+            }
             join_info.swapped = swapped;
             join_info.is_nested_loop = is_nested_loop;
             join_info.equi_keys = equi_key_sqls;
             join_info.residual_sql = residual_sql;
+            join_info.emit_unmatched_probe = emit_unmatched_probe;
+            join_info.emit_unmatched_build = emit_unmatched_build;
 
             if (swapped) {
                 join_info.probe_side = scope.tables[1].name;
@@ -1104,6 +1132,8 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
                     std::move(build_child),
                     j.type,
                     /*swapped=*/true,
+                    emit_unmatched_probe,
+                    emit_unmatched_build,
                     std::move(build_keys),
                     std::move(probe_keys),
                     std::move(build_affs),
@@ -1134,6 +1164,8 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
                     std::move(build_child),
                     j.type,
                     /*swapped=*/false,
+                    emit_unmatched_probe,
+                    emit_unmatched_build,
                     std::move(probe_keys),
                     std::move(build_keys),
                     std::move(probe_affs),
@@ -1494,13 +1526,38 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
 
         bool is_nested_loop = probe_keys.empty();
 
+        // Build swap heuristic: if !options.no_join_swap && i == 1 && (INNER || RIGHT) && fileSize(table 0) < fileSize(table 1)
         bool swapped = false;
-        if (i == 1 && j.type == JoinType::INNER) {
+        if (!options.no_join_swap && i == 1 && (j.type == JoinType::INNER || j.type == JoinType::RIGHT)) {
             size_t sz0 = getFileSize(scope.tables[0].csv_path);
             size_t sz1 = getFileSize(scope.tables[1].csv_path);
             if (sz0 < sz1) {
                 swapped = true;
             }
+        }
+
+        bool emit_unmatched_probe = false;
+        bool emit_unmatched_build = false;
+        if (j.type == JoinType::INNER) {
+            emit_unmatched_probe = false;
+            emit_unmatched_build = false;
+        } else if (j.type == JoinType::LEFT) {
+            emit_unmatched_probe = true;
+            emit_unmatched_build = false;
+        } else if (j.type == JoinType::RIGHT) {
+            if (swapped) {
+                // Swapped RIGHT: probe is table 1 (R, preserved), build is table 0 (L)
+                emit_unmatched_probe = true;
+                emit_unmatched_build = false;
+            } else {
+                // Default RIGHT: probe is L, build is R (preserved)
+                emit_unmatched_probe = false;
+                emit_unmatched_build = true;
+            }
+        } else if (j.type == JoinType::FULL) {
+            emit_unmatched_probe = true;
+            emit_unmatched_build = true;
+            swapped = false; // never swapped
         }
 
         std::vector<size_t> kept_build_slots;
@@ -1516,11 +1573,18 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
         std::sort(kept_build_slots.begin(), kept_build_slots.end());
 
         Plan::JoinPlanInfo join_info;
-        join_info.join_type = (j.type == JoinType::LEFT ? "LEFT" : "INNER");
+        switch (j.type) {
+            case JoinType::INNER: join_info.join_type = "INNER"; break;
+            case JoinType::LEFT:  join_info.join_type = "LEFT";  break;
+            case JoinType::RIGHT: join_info.join_type = "RIGHT"; break;
+            case JoinType::FULL:  join_info.join_type = "FULL";  break;
+        }
         join_info.swapped = swapped;
         join_info.is_nested_loop = is_nested_loop;
         join_info.equi_keys = equi_key_sqls;
         join_info.residual_sql = residual_sql;
+        join_info.emit_unmatched_probe = emit_unmatched_probe;
+        join_info.emit_unmatched_build = emit_unmatched_build;
 
         if (swapped) {
             join_info.probe_side = scope.tables[1].name;
@@ -1539,6 +1603,8 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
                 std::move(build_child),
                 j.type,
                 /*swapped=*/true,
+                emit_unmatched_probe,
+                emit_unmatched_build,
                 std::move(build_keys),
                 std::move(probe_keys),
                 std::move(build_affs),
@@ -1569,6 +1635,8 @@ Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_arg
                 std::move(build_child),
                 j.type,
                 /*swapped=*/false,
+                emit_unmatched_probe,
+                emit_unmatched_build,
                 std::move(probe_keys),
                 std::move(build_keys),
                 std::move(probe_affs),
@@ -1687,7 +1755,7 @@ void Plan::explain(FILE* out) const {
             const auto& jp = join_plans[j];
             std::fprintf(out, "  Join %zu (type: %s, probe: %s, build: %s, swapped: %s, mode: %s",
                          j, jp.join_type.c_str(), jp.probe_side.c_str(), jp.build_side.c_str(),
-                         jp.swapped ? "true" : "false",
+                         jp.swapped ? "yes" : "no",
                          jp.is_nested_loop ? "NESTED_LOOP" : "HASH");
             if (!jp.equi_keys.empty()) {
                 std::fprintf(out, ", equi_keys: [");
@@ -1700,7 +1768,9 @@ void Plan::explain(FILE* out) const {
             if (!jp.residual_sql.empty()) {
                 std::fprintf(out, ", residual: %s", jp.residual_sql.c_str());
             }
-            std::fprintf(out, ")\n");
+            std::fprintf(out, ", emit_unmatched_probe: %s, emit_unmatched_build: %s)\n",
+                         jp.emit_unmatched_probe ? "yes" : "no",
+                         jp.emit_unmatched_build ? "yes" : "no");
         }
     }
 

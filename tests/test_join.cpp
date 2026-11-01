@@ -330,58 +330,598 @@ void testDuplicateKeys() {
 void testPushdownLegality() {
     std::cout << "Testing Pushdown Legality Truth Table...\n";
 
-    std::vector<JoinClause> joins;
+    // Example 1: a RIGHT JOIN b -> a: no, b: yes
+    {
+        std::vector<JoinClause> joins(1);
+        joins[0].type = JoinType::RIGHT;
+        assert(isTablePushdownLegal(0, joins) == false);
+        assert(isTablePushdownLegal(1, joins) == true);
+    }
 
-    // Empty joins: table 0 is legal
-    assert(isTablePushdownLegal(0, joins) == true);
+    // Example 2: a JOIN b RIGHT JOIN c -> a: no, b: no, c: yes
+    {
+        std::vector<JoinClause> joins(2);
+        joins[0].type = JoinType::INNER;
+        joins[1].type = JoinType::RIGHT;
+        assert(isTablePushdownLegal(0, joins) == false);
+        assert(isTablePushdownLegal(1, joins) == false);
+        assert(isTablePushdownLegal(2, joins) == true);
+    }
 
-    // Join 0 is INNER
-    JoinClause j0;
-    j0.type = JoinType::INNER;
-    joins.push_back(std::move(j0));
+    // Example 3: a LEFT JOIN b RIGHT JOIN c -> a: no, b: no, c: yes
+    {
+        std::vector<JoinClause> joins(2);
+        joins[0].type = JoinType::LEFT;
+        joins[1].type = JoinType::RIGHT;
+        assert(isTablePushdownLegal(0, joins) == false);
+        assert(isTablePushdownLegal(1, joins) == false);
+        assert(isTablePushdownLegal(2, joins) == true);
+    }
 
-    assert(isTablePushdownLegal(0, joins) == true);
-    assert(isTablePushdownLegal(1, joins) == true);
+    // Example 4: a RIGHT JOIN b JOIN c -> a: no, b: yes, c: yes
+    {
+        std::vector<JoinClause> joins(2);
+        joins[0].type = JoinType::RIGHT;
+        joins[1].type = JoinType::INNER;
+        assert(isTablePushdownLegal(0, joins) == false);
+        assert(isTablePushdownLegal(1, joins) == true);
+        assert(isTablePushdownLegal(2, joins) == true);
+    }
 
-    // Join 1 is LEFT
-    JoinClause j1;
-    j1.type = JoinType::LEFT;
-    joins.push_back(std::move(j1));
+    // Example 5: a FULL JOIN b -> a: no, b: no
+    {
+        std::vector<JoinClause> joins(1);
+        joins[0].type = JoinType::FULL;
+        assert(isTablePushdownLegal(0, joins) == false);
+        assert(isTablePushdownLegal(1, joins) == false);
+    }
 
-    assert(isTablePushdownLegal(0, joins) == true);
-    assert(isTablePushdownLegal(1, joins) == true);
-    assert(isTablePushdownLegal(2, joins) == false && "Right side of LEFT join is NOT legal for pushdown");
+    // Example 6: a LEFT JOIN b -> a: yes, b: no
+    {
+        std::vector<JoinClause> joins(1);
+        joins[0].type = JoinType::LEFT;
+        assert(isTablePushdownLegal(0, joins) == true);
+        assert(isTablePushdownLegal(1, joins) == false);
+    }
 
-    // Join 2 is INNER
-    JoinClause j2;
-    j2.type = JoinType::INNER;
-    joins.push_back(std::move(j2));
-
-    assert(isTablePushdownLegal(3, joins) == true && "Table introduced by INNER join is legal");
+    // Example 7: a JOIN b JOIN c -> a: yes, b: yes, c: yes
+    {
+        std::vector<JoinClause> joins(2);
+        joins[0].type = JoinType::INNER;
+        joins[1].type = JoinType::INNER;
+        assert(isTablePushdownLegal(0, joins) == true);
+        assert(isTablePushdownLegal(1, joins) == true);
+        assert(isTablePushdownLegal(2, joins) == true);
+    }
 
     std::cout << "  -> Pushdown legality truth table passed!\n";
 }
 
 // -----------------------------------------------------------------------------
-// 5. 1000 Randomized Property Tests vs Reference In-Test Join
+// 5. Residual Rejection and Null-Extension Tests (Change 3)
+// -----------------------------------------------------------------------------
+void testResidualRejectionNullExtended() {
+    std::cout << "Testing Residual Rejection and NULL-Extension (Hash & Nested-Loop)...\n";
+
+    std::vector<Tuple> probe_rows = {{{makeInt(1), makeInt(10)}}};
+    std::vector<Tuple> build_rows = {{{makeInt(1), makeInt(20)}}};
+
+    // Subtest 1: Hash mode RIGHT join - keys match (1 == 1) but residual (probe.val > build.val) rejects candidate
+    {
+        std::vector<std::unique_ptr<BoundExpr>> p_keys;
+        auto pk = std::make_unique<BoundExpr>();
+        pk->kind = BoundExprKind::COLUMN_REF;
+        pk->col_idx = 0;
+        pk->affinity = Affinity::NUMERIC;
+        p_keys.push_back(std::move(pk));
+
+        std::vector<std::unique_ptr<BoundExpr>> b_keys;
+        auto bk = std::make_unique<BoundExpr>();
+        bk->kind = BoundExprKind::COLUMN_REF;
+        bk->col_idx = 0;
+        bk->affinity = Affinity::NUMERIC;
+        b_keys.push_back(std::move(bk));
+
+        // Residual: probe.val > build.val (10 > 20 -> false)
+        auto residual = std::make_unique<BoundExpr>();
+        residual->kind = BoundExprKind::BINARY_OP;
+        residual->op = ">";
+        auto l = std::make_unique<BoundExpr>();
+        l->kind = BoundExprKind::COLUMN_REF;
+        l->col_idx = 1; // probe.val
+        auto r = std::make_unique<BoundExpr>();
+        r->kind = BoundExprKind::COLUMN_REF;
+        r->col_idx = 3; // build.val (probe_w = 2, 2 + 1 = 3)
+        residual->left = std::move(l);
+        residual->right = std::move(r);
+
+        std::vector<size_t> kept = {0, 1};
+
+        HashJoinOperator r_join(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::RIGHT,
+            /*swapped=*/false,
+            /*emit_unmatched_probe=*/false,
+            /*emit_unmatched_build=*/true,
+            std::move(p_keys),
+            std::move(b_keys),
+            {Affinity::NUMERIC},
+            {Affinity::NUMERIC},
+            std::move(residual),
+            2, 2, kept, 2, 2,
+            /*is_nested_loop=*/false,
+            false
+        );
+
+        assert(r_join.open());
+        Tuple out;
+        size_t count = 0;
+        while (r_join.next(out)) {
+            count++;
+            // Build row must be emitted once NULL-extended on probe slots
+            assert(out.values[0].type == V_NULL);
+            assert(out.values[1].type == V_NULL);
+            assert(out.values[2].i == 1);
+            assert(out.values[3].i == 20);
+        }
+        r_join.close();
+        assert(count == 1 && "RIGHT join must emit unmatched build row");
+    }
+
+    // Subtest 2: Hash mode FULL join - keys match, residual rejects candidate
+    {
+        std::vector<std::unique_ptr<BoundExpr>> p_keys;
+        auto pk = std::make_unique<BoundExpr>();
+        pk->kind = BoundExprKind::COLUMN_REF;
+        pk->col_idx = 0;
+        pk->affinity = Affinity::NUMERIC;
+        p_keys.push_back(std::move(pk));
+
+        std::vector<std::unique_ptr<BoundExpr>> b_keys;
+        auto bk = std::make_unique<BoundExpr>();
+        bk->kind = BoundExprKind::COLUMN_REF;
+        bk->col_idx = 0;
+        bk->affinity = Affinity::NUMERIC;
+        b_keys.push_back(std::move(bk));
+
+        auto residual = std::make_unique<BoundExpr>();
+        residual->kind = BoundExprKind::BINARY_OP;
+        residual->op = ">";
+        auto l = std::make_unique<BoundExpr>();
+        l->kind = BoundExprKind::COLUMN_REF;
+        l->col_idx = 1;
+        auto r = std::make_unique<BoundExpr>();
+        r->kind = BoundExprKind::COLUMN_REF;
+        r->col_idx = 3;
+        residual->left = std::move(l);
+        residual->right = std::move(r);
+
+        std::vector<size_t> kept = {0, 1};
+
+        HashJoinOperator f_join(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::FULL,
+            /*swapped=*/false,
+            /*emit_unmatched_probe=*/true,
+            /*emit_unmatched_build=*/true,
+            std::move(p_keys),
+            std::move(b_keys),
+            {Affinity::NUMERIC},
+            {Affinity::NUMERIC},
+            std::move(residual),
+            2, 2, kept, 2, 2,
+            /*is_nested_loop=*/false,
+            false
+        );
+
+        assert(f_join.open());
+        Tuple out;
+        std::vector<std::string> rows;
+        while (f_join.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        f_join.close();
+        assert(rows.size() == 2 && "FULL join must emit both probe and build NULL-extended");
+        assert(rows[0] == "I:1|I:10|NULL|NULL");
+        assert(rows[1] == "NULL|NULL|I:1|I:20");
+    }
+
+    // Subtest 3: Nested-loop mode RIGHT join - residual rejects candidate
+    {
+        auto residual = std::make_unique<BoundExpr>();
+        residual->kind = BoundExprKind::BINARY_OP;
+        residual->op = ">";
+        auto l = std::make_unique<BoundExpr>();
+        l->kind = BoundExprKind::COLUMN_REF;
+        l->col_idx = 1;
+        auto r = std::make_unique<BoundExpr>();
+        r->kind = BoundExprKind::COLUMN_REF;
+        r->col_idx = 3;
+        residual->left = std::move(l);
+        residual->right = std::move(r);
+
+        std::vector<size_t> kept = {0, 1};
+
+        HashJoinOperator r_nl_join(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::RIGHT,
+            /*swapped=*/false,
+            /*emit_unmatched_probe=*/false,
+            /*emit_unmatched_build=*/true,
+            {}, {}, {}, {},
+            std::move(residual),
+            2, 2, kept, 2, 2,
+            /*is_nested_loop=*/true,
+            false
+        );
+
+        assert(r_nl_join.open());
+        Tuple out;
+        size_t count = 0;
+        while (r_nl_join.next(out)) {
+            count++;
+            assert(out.values[0].type == V_NULL);
+            assert(out.values[1].type == V_NULL);
+            assert(out.values[2].i == 1);
+            assert(out.values[3].i == 20);
+        }
+        r_nl_join.close();
+        assert(count == 1);
+    }
+
+    // Subtest 4: Nested-loop mode FULL join - residual rejects candidate
+    {
+        auto residual = std::make_unique<BoundExpr>();
+        residual->kind = BoundExprKind::BINARY_OP;
+        residual->op = ">";
+        auto l = std::make_unique<BoundExpr>();
+        l->kind = BoundExprKind::COLUMN_REF;
+        l->col_idx = 1;
+        auto r = std::make_unique<BoundExpr>();
+        r->kind = BoundExprKind::COLUMN_REF;
+        r->col_idx = 3;
+        residual->left = std::move(l);
+        residual->right = std::move(r);
+
+        std::vector<size_t> kept = {0, 1};
+
+        HashJoinOperator f_nl_join(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::FULL,
+            /*swapped=*/false,
+            /*emit_unmatched_probe=*/true,
+            /*emit_unmatched_build=*/true,
+            {}, {}, {}, {},
+            std::move(residual),
+            2, 2, kept, 2, 2,
+            /*is_nested_loop=*/true,
+            false
+        );
+
+        assert(f_nl_join.open());
+        Tuple out;
+        std::vector<std::string> rows;
+        while (f_nl_join.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        f_nl_join.close();
+        assert(rows.size() == 2);
+        assert(rows[0] == "I:1|I:10|NULL|NULL");
+        assert(rows[1] == "NULL|NULL|I:1|I:20");
+    }
+
+    std::cout << "  -> Residual rejection tests passed!\n";
+}
+
+// -----------------------------------------------------------------------------
+// 6. Swapped RIGHT Join with NULL Key in Probe (Change user note)
+// -----------------------------------------------------------------------------
+void testSwappedRightProbeNullKey() {
+    std::cout << "Testing Swapped RIGHT Join with NULL Key in Probe (R)...\n";
+
+    // Customers (L, build): id=1, name="Alice"
+    std::vector<Tuple> cust_rows = {{{makeInt(1), makeString("Alice")}}};
+
+    // Orders (R, probe): cust_id=NULL, amount=99.5
+    std::vector<Tuple> order_rows = {{{makeNull(), makeFloat(99.5)}}};
+
+    std::vector<std::unique_ptr<BoundExpr>> probe_keys;
+    auto pk = std::make_unique<BoundExpr>();
+    pk->kind = BoundExprKind::COLUMN_REF;
+    pk->col_idx = 0; // order.cust_id
+    pk->affinity = Affinity::NUMERIC;
+    probe_keys.push_back(std::move(pk));
+
+    std::vector<std::unique_ptr<BoundExpr>> build_keys;
+    auto bk = std::make_unique<BoundExpr>();
+    bk->kind = BoundExprKind::COLUMN_REF;
+    bk->col_idx = 0; // customer.id
+    bk->affinity = Affinity::NUMERIC;
+    build_keys.push_back(std::move(bk));
+
+    std::vector<size_t> kept = {0, 1};
+
+    // Swapped RIGHT: probe=orders, build=customers, swapped=true, emit_unmatched_probe=true, emit_unmatched_build=false
+    HashJoinOperator swapped_right(
+        std::make_unique<MockOperator>(order_rows),   // probe = orders (R)
+        std::make_unique<MockOperator>(cust_rows),    // build = customers (L)
+        JoinType::RIGHT,
+        /*swapped=*/true,
+        /*emit_unmatched_probe=*/true,
+        /*emit_unmatched_build=*/false,
+        std::move(probe_keys),
+        std::move(build_keys),
+        {Affinity::NUMERIC},
+        {Affinity::NUMERIC},
+        nullptr,
+        2, 2, kept, 2, 2,
+        false, false
+    );
+
+    assert(swapped_right.open());
+    Tuple out;
+    size_t count = 0;
+    while (swapped_right.next(out)) {
+        count++;
+        // Must appear exactly once, NULL-extended on the left (customers slots = NULL)
+        assert(out.values[0].type == V_NULL);
+        assert(out.values[1].type == V_NULL);
+        assert(out.values[2].type == V_NULL);
+        assert(out.values[3].type == V_FLOAT && std::abs(out.values[3].d - 99.5) < 1e-6);
+    }
+    swapped_right.close();
+    assert(count == 1 && "Swapped RIGHT must emit NULL-key probe row exactly once");
+
+    std::cout << "  -> Swapped RIGHT probe NULL key passed!\n";
+}
+
+// -----------------------------------------------------------------------------
+// 7. NULL Key Build Row Storage and Emission
+// -----------------------------------------------------------------------------
+void testNullKeyStorageAndEmission() {
+    std::cout << "Testing NULL Key Storage and Emission (INNER/LEFT vs RIGHT/FULL)...\n";
+
+    std::vector<Tuple> probe_rows = {{{makeInt(1), makeString("p1")}}};
+    std::vector<Tuple> build_rows = {
+        {{makeNull(), makeString("b_null")}},
+        {{makeInt(1), makeString("b1")}}
+    };
+
+    auto make_keys = []() {
+        std::vector<std::unique_ptr<BoundExpr>> keys;
+        auto k = std::make_unique<BoundExpr>();
+        k->kind = BoundExprKind::COLUMN_REF;
+        k->col_idx = 0;
+        k->affinity = Affinity::NUMERIC;
+        keys.push_back(std::move(k));
+        return keys;
+    };
+
+    std::vector<size_t> kept = {0, 1};
+
+    // INNER: NULL-key row NOT stored
+    {
+        HashJoinOperator inner_op(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::INNER, false, false, false,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(inner_op.open());
+        assert(inner_op.buildRowCount() == 1 && "INNER must NOT store NULL-key build rows");
+        inner_op.close();
+    }
+
+    // LEFT: NULL-key row NOT stored
+    {
+        HashJoinOperator left_op(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::LEFT, false, true, false,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(left_op.open());
+        assert(left_op.buildRowCount() == 1 && "LEFT must NOT store NULL-key build rows");
+        left_op.close();
+    }
+
+    // RIGHT: NULL-key row IS stored and emitted once
+    {
+        HashJoinOperator right_op(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::RIGHT, false, false, true,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(right_op.open());
+        assert(right_op.buildRowCount() == 2 && "RIGHT must store NULL-key build rows");
+        Tuple out;
+        std::vector<std::string> rows;
+        while (right_op.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        right_op.close();
+        assert(rows.size() == 2);
+        assert(rows[0] == "I:1|S:p1|I:1|S:b1");
+        assert(rows[1] == "NULL|NULL|NULL|S:b_null");
+    }
+
+    // FULL: NULL-key row IS stored and emitted once
+    {
+        HashJoinOperator full_op(
+            std::make_unique<MockOperator>(probe_rows),
+            std::make_unique<MockOperator>(build_rows),
+            JoinType::FULL, false, true, true,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(full_op.open());
+        assert(full_op.buildRowCount() == 2 && "FULL must store NULL-key build rows");
+        Tuple out;
+        std::vector<std::string> rows;
+        while (full_op.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        full_op.close();
+        assert(rows.size() == 2);
+        assert(rows[0] == "I:1|S:p1|I:1|S:b1");
+        assert(rows[1] == "NULL|NULL|NULL|S:b_null");
+    }
+
+    std::cout << "  -> NULL key storage and emission tests passed!\n";
+}
+
+// -----------------------------------------------------------------------------
+// 8. Empty Probe and Build Tables
+// -----------------------------------------------------------------------------
+void testEmptyProbeAndBuild() {
+    std::cout << "Testing Empty Probe and Build Tables (RIGHT & FULL)...\n";
+
+    std::vector<Tuple> empty_rows;
+    std::vector<Tuple> non_empty_rows = {
+        {{makeInt(10), makeString("v10")}},
+        {{makeInt(20), makeString("v20")}}
+    };
+
+    auto make_keys = []() {
+        std::vector<std::unique_ptr<BoundExpr>> keys;
+        auto k = std::make_unique<BoundExpr>();
+        k->kind = BoundExprKind::COLUMN_REF;
+        k->col_idx = 0;
+        k->affinity = Affinity::NUMERIC;
+        keys.push_back(std::move(k));
+        return keys;
+    };
+
+    std::vector<size_t> kept = {0, 1};
+
+    // Subtest 1: Empty probe, non-empty build (RIGHT join -> emits all build rows NULL-extended on left)
+    {
+        HashJoinOperator r_op(
+            std::make_unique<MockOperator>(empty_rows),
+            std::make_unique<MockOperator>(non_empty_rows),
+            JoinType::RIGHT, false, false, true,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(r_op.open());
+        Tuple out;
+        std::vector<std::string> rows;
+        while (r_op.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        r_op.close();
+        assert(rows.size() == 2);
+        assert(rows[0] == "NULL|NULL|I:10|S:v10");
+        assert(rows[1] == "NULL|NULL|I:20|S:v20");
+    }
+
+    // Subtest 2: Non-empty probe, empty build (FULL join -> emits all probe rows NULL-extended on right)
+    {
+        HashJoinOperator f_op(
+            std::make_unique<MockOperator>(non_empty_rows),
+            std::make_unique<MockOperator>(empty_rows),
+            JoinType::FULL, false, true, true,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(f_op.open());
+        Tuple out;
+        std::vector<std::string> rows;
+        while (f_op.next(out)) {
+            rows.push_back(tupleToString(out));
+        }
+        f_op.close();
+        assert(rows.size() == 2);
+        assert(rows[0] == "I:10|S:v10|NULL|NULL");
+        assert(rows[1] == "I:20|S:v20|NULL|NULL");
+    }
+
+    // Subtest 3: Non-empty probe, empty build (RIGHT join -> emits 0 rows)
+    {
+        HashJoinOperator r_op(
+            std::make_unique<MockOperator>(non_empty_rows),
+            std::make_unique<MockOperator>(empty_rows),
+            JoinType::RIGHT, false, false, true,
+            make_keys(), make_keys(), {Affinity::NUMERIC}, {Affinity::NUMERIC},
+            nullptr, 2, 2, kept, 2, 2, false, false
+        );
+        assert(r_op.open());
+        Tuple out;
+        size_t count = 0;
+        while (r_op.next(out)) count++;
+        r_op.close();
+        assert(count == 0);
+    }
+
+    std::cout << "  -> Empty probe/build tests passed!\n";
+}
+
+// -----------------------------------------------------------------------------
+// 9. 1000 Randomized Property Tests vs Reference In-Test Join
 // -----------------------------------------------------------------------------
 void test1000RandomizedPropertyJoins() {
-    std::cout << "Running 1000 Randomized Property Tests vs Reference Nested-Loop Join...\n";
+    std::cout << "Running 1000 Randomized Property Tests (INNER, LEFT, RIGHT, FULL vs Reference Join)...\n";
 
     std::mt19937 rng(42);
-    std::uniform_int_distribution<size_t> probe_len_dist(0, 40);
-    std::uniform_int_distribution<size_t> build_len_dist(0, 40);
-    std::uniform_int_distribution<int> key_dist(1, 15);
-    std::uniform_int_distribution<int> null_dist(0, 8); // 0 means NULL
+    std::uniform_int_distribution<size_t> probe_len_dist(0, 30);
+    std::uniform_int_distribution<size_t> build_len_dist(0, 30);
+    std::uniform_int_distribution<int> key_dist(1, 10);
+    std::uniform_int_distribution<int> null_dist(0, 4); // ~20% NULL keys
+    std::uniform_int_distribution<int> join_kind_dist(0, 3); // 0=INNER, 1=LEFT, 2=RIGHT, 3=FULL
+    std::uniform_int_distribution<int> nl_dist(0, 4); // 0 means nested loop (20% of cases)
+    std::uniform_int_distribution<int> swap_dist(0, 1);
     std::uniform_int_distribution<int> bool_dist(0, 1);
-    std::uniform_int_distribution<int> type_dist(0, 2); // 0 = INT, 1 = FLOAT, 2 = STRING
+    std::uniform_int_distribution<int> type_dist(0, 2); // 0=INT, 1=FLOAT, 2=STRING
 
     for (int iter = 0; iter < 1000; ++iter) {
         size_t p_len = probe_len_dist(rng);
         size_t b_len = build_len_dist(rng);
-        bool is_left = (bool_dist(rng) == 1);
+        int join_kind = join_kind_dist(rng); // 0=INNER, 1=LEFT, 2=RIGHT, 3=FULL
+        bool is_nested_loop = (nl_dist(rng) == 0);
         bool has_residual = (bool_dist(rng) == 1);
         int key_type = type_dist(rng);
+
+        JoinType jtype;
+        bool emit_unmatched_probe = false;
+        bool emit_unmatched_build = false;
+        bool swapped = false;
+
+        if (join_kind == 0) {
+            jtype = JoinType::INNER;
+            emit_unmatched_probe = false;
+            emit_unmatched_build = false;
+            swapped = (swap_dist(rng) == 1);
+        } else if (join_kind == 1) {
+            jtype = JoinType::LEFT;
+            emit_unmatched_probe = true;
+            emit_unmatched_build = false;
+            swapped = false;
+        } else if (join_kind == 2) {
+            jtype = JoinType::RIGHT;
+            if (swap_dist(rng) == 1) {
+                // Swapped RIGHT: probe child is R (probe_tuples), build child is L (build_tuples), swapped layout
+                emit_unmatched_probe = true;
+                emit_unmatched_build = false;
+                swapped = true;
+            } else {
+                emit_unmatched_probe = false;
+                emit_unmatched_build = true;
+                swapped = false;
+            }
+        } else {
+            jtype = JoinType::FULL;
+            emit_unmatched_probe = true;
+            emit_unmatched_build = true;
+            swapped = false;
+        }
 
         std::deque<std::string> p_strings;
         std::vector<Tuple> probe_tuples;
@@ -423,55 +963,88 @@ void test1000RandomizedPropertyJoins() {
 
         // Reference Join Output (Multiset)
         std::map<std::string, int> ref_multiset;
-        for (size_t p = 0; p < probe_tuples.size(); ++p) {
-            const auto& pt = probe_tuples[p];
-            bool matched = false;
-            if (pt.values[0].type != V_NULL) {
-                for (size_t b = 0; b < build_tuples.size(); ++b) {
-                    const auto& bt = build_tuples[b];
-                    if (bt.values[0].type == V_NULL) continue;
+        std::vector<uint8_t> ref_probe_matched(p_len, 0);
+        std::vector<uint8_t> ref_build_matched(b_len, 0);
 
-                    bool keys_equal = false;
+        for (size_t p = 0; p < p_len; ++p) {
+            const auto& pt = probe_tuples[p];
+            for (size_t b = 0; b < b_len; ++b) {
+                const auto& bt = build_tuples[b];
+
+                bool keys_equal = false;
+                if (is_nested_loop) {
+                    keys_equal = true; // no equi-keys
+                } else if (pt.values[0].type != V_NULL && bt.values[0].type != V_NULL) {
                     if (key_type == 0) keys_equal = (pt.values[0].i == bt.values[0].i);
                     else if (key_type == 1) keys_equal = (pt.values[0].d == bt.values[0].d);
                     else keys_equal = (pt.values[0].s == bt.values[0].s);
+                }
 
-                    if (keys_equal) {
-                        bool res_pass = true;
-                        if (has_residual) {
-                            // Residual condition: probe.payload <= build.payload
-                            res_pass = (pt.values[1].i <= bt.values[1].i);
-                        }
-                        if (res_pass) {
-                            matched = true;
-                            Tuple combined;
+                if (keys_equal) {
+                    bool res_pass = true;
+                    if (has_residual) {
+                        // Residual: probe.payload <= build.payload
+                        res_pass = (pt.values[1].i <= bt.values[1].i);
+                    }
+                    if (res_pass) {
+                        ref_probe_matched[p] = 1;
+                        ref_build_matched[b] = 1;
+                        Tuple combined;
+                        if (!swapped) {
                             combined.values = {pt.values[0], pt.values[1], bt.values[0], bt.values[1]};
-                            ref_multiset[tupleToString(combined)]++;
+                        } else {
+                            combined.values = {bt.values[0], bt.values[1], pt.values[0], pt.values[1]};
                         }
+                        ref_multiset[tupleToString(combined)]++;
                     }
                 }
             }
-            if (!matched && is_left) {
-                Tuple combined;
-                combined.values = {pt.values[0], pt.values[1], makeNull(), makeNull()};
-                ref_multiset[tupleToString(combined)]++;
+        }
+
+        if (emit_unmatched_probe) {
+            for (size_t p = 0; p < p_len; ++p) {
+                if (!ref_probe_matched[p]) {
+                    Tuple combined;
+                    if (!swapped) {
+                        combined.values = {probe_tuples[p].values[0], probe_tuples[p].values[1], makeNull(), makeNull()};
+                    } else {
+                        combined.values = {makeNull(), makeNull(), probe_tuples[p].values[0], probe_tuples[p].values[1]};
+                    }
+                    ref_multiset[tupleToString(combined)]++;
+                }
+            }
+        }
+
+        if (emit_unmatched_build) {
+            for (size_t b = 0; b < b_len; ++b) {
+                if (!ref_build_matched[b]) {
+                    Tuple combined;
+                    if (!swapped) {
+                        combined.values = {makeNull(), makeNull(), build_tuples[b].values[0], build_tuples[b].values[1]};
+                    } else {
+                        combined.values = {build_tuples[b].values[0], build_tuples[b].values[1], makeNull(), makeNull()};
+                    }
+                    ref_multiset[tupleToString(combined)]++;
+                }
             }
         }
 
         // Run HashJoinOperator
         std::vector<std::unique_ptr<BoundExpr>> p_keys;
-        auto pk = std::make_unique<BoundExpr>();
-        pk->kind = BoundExprKind::COLUMN_REF;
-        pk->col_idx = 0;
-        pk->affinity = (key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC);
-        p_keys.push_back(std::move(pk));
-
         std::vector<std::unique_ptr<BoundExpr>> b_keys;
-        auto bk = std::make_unique<BoundExpr>();
-        bk->kind = BoundExprKind::COLUMN_REF;
-        bk->col_idx = 0;
-        bk->affinity = (key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC);
-        b_keys.push_back(std::move(bk));
+        if (!is_nested_loop) {
+            auto pk = std::make_unique<BoundExpr>();
+            pk->kind = BoundExprKind::COLUMN_REF;
+            pk->col_idx = 0;
+            pk->affinity = (key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC);
+            p_keys.push_back(std::move(pk));
+
+            auto bk = std::make_unique<BoundExpr>();
+            bk->kind = BoundExprKind::COLUMN_REF;
+            bk->col_idx = 0;
+            bk->affinity = (key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC);
+            b_keys.push_back(std::move(bk));
+        }
 
         std::unique_ptr<BoundExpr> residual = nullptr;
         if (has_residual) {
@@ -480,10 +1053,15 @@ void test1000RandomizedPropertyJoins() {
             residual->op = "<=";
             auto l = std::make_unique<BoundExpr>();
             l->kind = BoundExprKind::COLUMN_REF;
-            l->col_idx = 1; // probe.payload
             auto r = std::make_unique<BoundExpr>();
             r->kind = BoundExprKind::COLUMN_REF;
-            r->col_idx = 3; // build.payload (probe_width = 2, so offset 2 + 1 = 3)
+            if (!swapped) {
+                l->col_idx = 1; // probe.payload
+                r->col_idx = 3; // build.payload (probe_w=2 + 1)
+            } else {
+                r->col_idx = 1; // build.payload
+                l->col_idx = 3; // probe.payload (build_w=2 + 1)
+            }
             residual->left = std::move(l);
             residual->right = std::move(r);
         }
@@ -493,14 +1071,18 @@ void test1000RandomizedPropertyJoins() {
         HashJoinOperator join_op(
             std::make_unique<MockOperator>(probe_tuples),
             std::make_unique<MockOperator>(build_tuples),
-            is_left ? JoinType::LEFT : JoinType::INNER,
-            /*swapped=*/false,
+            jtype,
+            swapped,
+            emit_unmatched_probe,
+            emit_unmatched_build,
             std::move(p_keys),
             std::move(b_keys),
             {key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC},
             {key_type == 2 ? Affinity::TEXT : Affinity::NUMERIC},
             std::move(residual),
-            2, 2, kept, 2, 2, false, false
+            2, 2, kept, 2, 2,
+            is_nested_loop,
+            false
         );
 
         assert(join_op.open());
@@ -513,7 +1095,8 @@ void test1000RandomizedPropertyJoins() {
 
         if (actual_multiset != ref_multiset) {
             std::cerr << "Mismatch at iter " << iter << " (p_len=" << p_len << ", b_len=" << b_len
-                      << ", is_left=" << is_left << ", has_residual=" << has_residual << ", key_type=" << key_type << ")\n";
+                      << ", jtype=" << static_cast<int>(jtype) << ", swapped=" << swapped
+                      << ", is_nl=" << is_nested_loop << ", has_residual=" << has_residual << ", key_type=" << key_type << ")\n";
             std::cerr << "Reference multiset (" << ref_multiset.size() << " entries):\n";
             for (const auto& [k, v] : ref_multiset) {
                 std::cerr << "  ref: " << k << " count=" << v << "\n";
@@ -651,6 +1234,10 @@ int main() {
     testZeroKeptBuildColumns();
     testDuplicateKeys();
     testPushdownLegality();
+    testResidualRejectionNullExtended();
+    testSwappedRightProbeNullKey();
+    testNullKeyStorageAndEmission();
+    testEmptyProbeAndBuild();
     testSwappedAndNestedLoop();
     test1000RandomizedPropertyJoins();
     std::cout << "All join unit & property tests PASSED!\n";

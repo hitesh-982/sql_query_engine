@@ -1,0 +1,706 @@
+[
+  {
+    "name": "p5b_right_basic",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_reversed_on",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o RIGHT JOIN customers c ON c.id = o.cust_id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_outer_keyword",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o RIGHT OUTER JOIN customers c ON o.cust_id = c.id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_unmatched_null_extended",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL ORDER BY c.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_anti_join_count",
+    "sql": "SELECT COUNT(*), COUNT(c.id), COUNT(o.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_counts",
+    "sql": "SELECT COUNT(*), COUNT(o.id), COUNT(c.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_multi_key",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND o.id = c.id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_expr_select",
+    "sql": "SELECT c.id, c.name, o.amount * 2, 'Const' FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_basic",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id ORDER BY o.id, c.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_probe_null_key",
+    "sql": "SELECT c.id, c.name, o.id, o.cust_id, o.amount FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id WHERE o.cust_id IS NULL ORDER BY o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_anti_join",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.name FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id WHERE c.id IS NULL ORDER BY o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_no_swap_comparison",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id ORDER BY o.id, c.id, c.name LIMIT 25",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "customers={customers}",
+      "--table",
+      "orders={orders}",
+      "--no-join-swap",
+      "--sql",
+      "SELECT c.id, c.name, o.id, o.amount FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id ORDER BY o.id, c.id, c.name LIMIT 25"
+    ]
+  },
+  {
+    "name": "p5b_right_on_residual_right_only",
+    "sql": "SELECT c.id, c.region, o.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND c.region = 'North' ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_on_residual_left_only",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND o.amount > 500 ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_on_residual_cross_table",
+    "sql": "SELECT c.id, c.name, o.id, o.qty FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND o.qty < c.id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_on_residual_like",
+    "sql": "SELECT c.id, c.name, o.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND c.name LIKE 'Customer_1%' ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_on_residual_is_not_null",
+    "sql": "SELECT c.id, c.note, o.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND c.note IS NOT NULL ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_on_residual_or",
+    "sql": "SELECT c.id, c.region, o.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id AND (c.region = 'North' OR c.region = 'South') ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_where_pushed_right",
+    "sql": "SELECT c.id, c.region, o.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'East' ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_where_unpushed_left",
+    "sql": "SELECT c.id, c.region, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.amount > 1000 ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_where_both_tables",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id > 10 AND o.amount < 5000 ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_basic",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_outer_keyword",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.name FROM orders o FULL OUTER JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_counts",
+    "sql": "SELECT COUNT(*), COUNT(o.id), COUNT(c.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_full_both_unmatched",
+    "sql": "SELECT o.id, c.id FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL OR c.id IS NULL ORDER BY o.id, c.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_unmatched_probe_only",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.id IS NULL ORDER BY o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_unmatched_build_only",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL ORDER BY c.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_on_residual_left",
+    "sql": "SELECT o.id, o.amount, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id AND o.amount > 500 ORDER BY o.id, c.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_on_residual_right",
+    "sql": "SELECT o.id, c.id, c.region FROM orders o FULL JOIN customers c ON o.cust_id = c.id AND c.region = 'West' ORDER BY o.id, c.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_where_left",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount BETWEEN 500 AND 1500 ORDER BY o.id, c.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_where_right",
+    "sql": "SELECT o.id, c.id, c.region FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.region = 'South' ORDER BY o.id, c.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_reversed_tables_counts",
+    "sql": "SELECT COUNT(*), COUNT(c.id), COUNT(o.id) FROM customers c FULL JOIN orders o ON c.id = o.cust_id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_chain_inner_right",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o JOIN customers c ON o.cust_id = c.id RIGHT JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_right_inner",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY c.id, o.id, p.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_left_right",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id RIGHT JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_right_left",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id ORDER BY c.id, o.id, p.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_full_inner",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_inner_full",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o JOIN customers c ON o.cust_id = c.id FULL JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_full_left",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id ORDER BY o.id, c.id, p.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_left_full",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id FULL JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_right_right",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id RIGHT JOIN products p ON c.id = p.id ORDER BY p.id, c.name, o.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_full_full",
+    "sql": "SELECT o.id, c.name, p.id, p.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id FULL JOIN products p ON o.product_id = p.id ORDER BY p.id, o.id, c.name LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_chain_second_on_first_table",
+    "sql": "SELECT o1.id, c.name, o2.id FROM orders o1 RIGHT JOIN customers c ON o1.cust_id = c.id JOIN orders o2 ON o1.id = o2.id WHERE o1.id < 50 ORDER BY o1.id, o2.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_self_right",
+    "sql": "SELECT c1.id, c1.name, c2.id, c2.name FROM customers c1 RIGHT JOIN customers c2 ON c1.id = c2.id + 1 WHERE c2.id < 30 ORDER BY c2.id, c1.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_self_full",
+    "sql": "SELECT c1.id, c1.name, c2.id, c2.name FROM customers c1 FULL JOIN customers c2 ON c1.id = c2.id WHERE (c1.id < 15 OR c2.id < 15) AND (c1.id IS NULL OR c2.id IS NULL OR c1.id = c2.id) ORDER BY c1.id, c2.id LIMIT 30",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_right_less_than",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.id < c.id WHERE c.id <= 5 AND (o.id <= 5 OR o.id IS NULL) ORDER BY c.id, o.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_full_less_than",
+    "sql": "SELECT o.id, c.id FROM orders o FULL JOIN customers c ON o.id < c.id WHERE (c.id <= 4 OR c.id IS NULL) AND (o.id <= 4 OR o.id IS NULL) ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_right_constant_true",
+    "sql": "SELECT o.id, c.id FROM orders o RIGHT JOIN customers c ON 1 = 1 WHERE c.id = 1 AND o.id <= 3 ORDER BY c.id, o.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_full_constant_false",
+    "sql": "SELECT o.id, c.id FROM orders o FULL JOIN customers c ON 1 = 0 WHERE (o.id <= 3 OR o.id IS NULL) AND (c.id <= 3 OR c.id IS NULL) ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_right_or_condition",
+    "sql": "SELECT o.id, c.id FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id OR o.id = c.id WHERE c.id <= 10 AND (o.id <= 10 OR o.id IS NULL) ORDER BY c.id, o.id",
+    "ordered": true
+  },
+  {
+    "name": "p5b_nl_full_string_comp",
+    "sql": "SELECT c.name, p.name FROM customers c FULL JOIN products p ON c.name < p.name WHERE (c.id <= 3 OR c.id IS NULL) AND (p.id <= 3 OR p.id IS NULL) ORDER BY c.name, p.name",
+    "ordered": true
+  },
+  {
+    "name": "p5b_affinity_right_int_text",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.code FROM orders o RIGHT JOIN customers c ON o.cust_id = c.code WHERE c.id < 50 ORDER BY c.id, o.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_affinity_full_int_text",
+    "sql": "SELECT o.id, o.cust_id, c.id, c.code FROM orders o FULL JOIN customers c ON o.cust_id = c.code WHERE (o.id < 20 OR o.id IS NULL) AND (c.id < 20 OR c.id IS NULL) ORDER BY o.id, c.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_affinity_right_swapped_text_int",
+    "sql": "SELECT c.id, c.code, o.id, o.cust_id FROM customers c RIGHT JOIN orders o ON c.code = o.cust_id WHERE o.id < 50 ORDER BY o.id, c.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_agg_right_group_region",
+    "sql": "SELECT c.region, COUNT(*), COUNT(o.id), SUM(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_agg_right_having",
+    "sql": "SELECT c.region, COUNT(o.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region HAVING COUNT(o.id) > 50 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_agg_full_group_region",
+    "sql": "SELECT c.region, COUNT(*), COUNT(o.id), COUNT(c.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_agg_full_null_group",
+    "sql": "SELECT o.status, COUNT(*), COUNT(c.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id GROUP BY o.status ORDER BY o.status",
+    "ordered": true
+  },
+  {
+    "name": "p5b_agg_right_scalar",
+    "sql": "SELECT COUNT(*), COUNT(o.id), COUNT(c.id), MIN(o.amount), MAX(o.amount), SUM(o.amount) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_agg_full_scalar",
+    "sql": "SELECT COUNT(*), COUNT(o.id), COUNT(c.id), MIN(o.amount), MAX(o.amount), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_order_right_alias_limit",
+    "sql": "SELECT o.id AS order_id, c.name AS cust_name, o.amount AS amt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY amt DESC, order_id, cust_name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5b_order_right_ordinal",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY 4 DESC, 1, 3, 2 LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5b_order_full_both_tables",
+    "sql": "SELECT o.id, o.amount, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id, c.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5b_distinct_right_single",
+    "sql": "SELECT DISTINCT c.region FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_distinct_full_two_cols",
+    "sql": "SELECT DISTINCT o.status, c.region FROM orders o FULL JOIN customers c ON o.cust_id = c.id ORDER BY o.status, c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_top_n_right",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_top_n_full_offset",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o FULL JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id, c.name LIMIT 15 OFFSET 5",
+    "ordered": true
+  },
+  {
+    "name": "p5b_ext_sort_1",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 10 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 10 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_2",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 20 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 20 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_3",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 30 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 30 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_4",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 40 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 40 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_5",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_6",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 60 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 60 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_7",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 70 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 70 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_8",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 80 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 80 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_9",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 90 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 90 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_ext_sort_10",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 100 ORDER BY o.amount DESC, o.id, c.name",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 100 ORDER BY o.amount DESC, o.id, c.name"
+    ]
+  },
+  {
+    "name": "p5b_right_zero_kept_build",
+    "sql": "SELECT COUNT(o.id) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_zero_kept_probe",
+    "sql": "SELECT c.region, COUNT(*) FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_zero_kept_build",
+    "sql": "SELECT COUNT(o.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_full_zero_kept_probe",
+    "sql": "SELECT COUNT(c.id) FROM orders o FULL JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5b_chain_arithmetic",
+    "sql": "SELECT o.id, (o.amount + p.price) * 1.05 AS total_est FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id WHERE o.id < 50 ORDER BY total_est DESC, o.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_multi_where",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.amount > 100 AND o.amount < 1000 AND c.region = 'East' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_multi_where",
+    "sql": "SELECT o.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.id > 10 AND c.id < 50 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_order_by_unselected_agg",
+    "sql": "SELECT c.region FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY COUNT(o.id) DESC, c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_aggregates",
+    "sql": "SELECT c.region, COUNT(*), COUNT(o.id), SUM(o.amount) FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_having",
+    "sql": "SELECT c.region, COUNT(o.id) FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id GROUP BY c.region HAVING COUNT(o.id) > 100 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_swapped_distinct",
+    "sql": "SELECT DISTINCT c.region, o.status FROM customers c RIGHT JOIN orders o ON c.id = o.cust_id ORDER BY c.region, o.status",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_dual_anti_join_count",
+    "sql": "SELECT COUNT(*) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.id IS NULL OR c.id IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_filter_region_north",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'North' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_region_north",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.region = 'North' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_region_south",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'South' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_region_south",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.region = 'South' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_region_east",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'East' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_region_east",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.region = 'East' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_region_west",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'West' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_region_west",
+    "sql": "SELECT o.id, c.name, c.region, o.amount FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE c.region = 'West' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_status_pending",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.status = 'pending' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_status_pending",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.status = 'pending' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_status_completed",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.status = 'completed' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_status_completed",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.status = 'completed' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_status_shipped",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.status = 'shipped' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_status_shipped",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.status = 'shipped' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_filter_status_returned",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE o.status = 'returned' ORDER BY c.id, o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_filter_status_returned",
+    "sql": "SELECT o.id, o.status, c.id, c.name FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.status = 'returned' ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_right_threshold_100",
+    "sql": "SELECT c.id, c.name, COUNT(o.id) AS order_cnt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 AND (o.amount > 100 OR o.amount IS NULL) GROUP BY c.id, c.name ORDER BY order_cnt DESC, c.id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_threshold_100",
+    "sql": "SELECT COUNT(*), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount < 100 OR o.amount IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_threshold_500",
+    "sql": "SELECT c.id, c.name, COUNT(o.id) AS order_cnt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 AND (o.amount > 500 OR o.amount IS NULL) GROUP BY c.id, c.name ORDER BY order_cnt DESC, c.id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_threshold_500",
+    "sql": "SELECT COUNT(*), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount < 500 OR o.amount IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_threshold_1000",
+    "sql": "SELECT c.id, c.name, COUNT(o.id) AS order_cnt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 AND (o.amount > 1000 OR o.amount IS NULL) GROUP BY c.id, c.name ORDER BY order_cnt DESC, c.id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_threshold_1000",
+    "sql": "SELECT COUNT(*), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount < 1000 OR o.amount IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_threshold_2500",
+    "sql": "SELECT c.id, c.name, COUNT(o.id) AS order_cnt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 AND (o.amount > 2500 OR o.amount IS NULL) GROUP BY c.id, c.name ORDER BY order_cnt DESC, c.id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_threshold_2500",
+    "sql": "SELECT COUNT(*), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount < 2500 OR o.amount IS NULL",
+    "ordered": false
+  },
+  {
+    "name": "p5b_right_threshold_5000",
+    "sql": "SELECT c.id, c.name, COUNT(o.id) AS order_cnt FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id WHERE c.id <= 50 AND (o.amount > 5000 OR o.amount IS NULL) GROUP BY c.id, c.name ORDER BY order_cnt DESC, c.id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5b_full_threshold_5000",
+    "sql": "SELECT COUNT(*), SUM(o.amount) FROM orders o FULL JOIN customers c ON o.cust_id = c.id WHERE o.amount < 5000 OR o.amount IS NULL",
+    "ordered": false
+  }
+]

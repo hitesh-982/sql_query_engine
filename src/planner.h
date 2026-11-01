@@ -59,6 +59,8 @@ struct Plan {
         bool is_nested_loop = false;
         std::vector<std::pair<std::string, std::string>> equi_keys;
         std::string residual_sql;
+        bool emit_unmatched_probe = false;
+        bool emit_unmatched_build = false;
     };
     std::vector<JoinPlanInfo> join_plans;
 
@@ -72,6 +74,7 @@ struct PlanOptions {
     bool sort_stats = false;
     size_t sort_fan_in = 64;
     bool no_pushdown = false;
+    bool no_join_swap = false;
     bool join_stats = false;
 };
 

@@ -9,6 +9,8 @@ HashJoinOperator::HashJoinOperator(
     std::unique_ptr<Operator> build_child,
     JoinType join_type,
     bool swapped,
+    bool emit_unmatched_probe,
+    bool emit_unmatched_build,
     std::vector<std::unique_ptr<BoundExpr>> probe_keys,
     std::vector<std::unique_ptr<BoundExpr>> build_keys,
     std::vector<Affinity> probe_key_affinities,
@@ -26,6 +28,8 @@ HashJoinOperator::HashJoinOperator(
       build_child_(std::move(build_child)),
       join_type_(join_type),
       swapped_(swapped),
+      emit_unmatched_probe_(emit_unmatched_probe),
+      emit_unmatched_build_(emit_unmatched_build),
       probe_keys_(std::move(probe_keys)),
       build_keys_(std::move(build_keys)),
       probe_key_affinities_(std::move(probe_key_affinities)),
@@ -60,6 +64,45 @@ HashJoinOperator::HashJoinOperator(
     }
 }
 
+HashJoinOperator::HashJoinOperator(
+    std::unique_ptr<Operator> probe_child,
+    std::unique_ptr<Operator> build_child,
+    JoinType join_type,
+    bool swapped,
+    std::vector<std::unique_ptr<BoundExpr>> probe_keys,
+    std::vector<std::unique_ptr<BoundExpr>> build_keys,
+    std::vector<Affinity> probe_key_affinities,
+    std::vector<Affinity> build_key_affinities,
+    std::unique_ptr<BoundExpr> residual_predicate,
+    size_t probe_width,
+    size_t build_width,
+    std::vector<size_t> kept_build_slots,
+    size_t written_left_width,
+    size_t written_right_width,
+    bool is_nested_loop,
+    bool join_stats
+)
+    : HashJoinOperator(
+          std::move(probe_child),
+          std::move(build_child),
+          join_type,
+          swapped,
+          /*emit_unmatched_probe=*/(join_type == JoinType::LEFT),
+          /*emit_unmatched_build=*/false,
+          std::move(probe_keys),
+          std::move(build_keys),
+          std::move(probe_key_affinities),
+          std::move(build_key_affinities),
+          std::move(residual_predicate),
+          probe_width,
+          build_width,
+          std::move(kept_build_slots),
+          written_left_width,
+          written_right_width,
+          is_nested_loop,
+          join_stats
+      ) {}
+
 HashJoinOperator::~HashJoinOperator() {
     close();
 }
@@ -75,11 +118,15 @@ bool HashJoinOperator::open() {
 
     build_store_.clear();
     next_row_.clear();
+    build_matched_.clear();
     hash_table_.clear();
     build_row_count_ = 0;
     probe_rows_read_ = 0;
     rows_output_ = 0;
-    current_build_idx_ = static_cast<size_t>(-1);
+    unmatched_probe_emitted_ = 0;
+    unmatched_build_emitted_ = 0;
+    unmatched_build_cursor_ = 0;
+    current_build_idx_ = NO_ROW;
     probe_matched_ = false;
 
     // Build phase: drain build_child
@@ -108,8 +155,24 @@ bool HashJoinOperator::open() {
                     );
                 }
 
-                // In SQL, NULL keys never match any value (not even NULL)
+                // In SQL, NULL keys never match any value.
+                // If emit_unmatched_build_ is false (INNER/LEFT), skip row completely.
+                // If emit_unmatched_build_ is true (RIGHT/FULL), row must be stored but NOT indexed in hash table.
                 if (has_null_key) {
+                    if (!emit_unmatched_build_) {
+                        continue;
+                    }
+                    // Store kept columns for NULL-key row (it remains unmatched forever)
+                    for (size_t slot : kept_build_slots_) {
+                        if (slot < b_tuple.values.size()) {
+                            build_store_.push_back(b_tuple.values[slot]);
+                        } else {
+                            build_store_.push_back(makeNull());
+                        }
+                    }
+                    next_row_.push_back(NO_ROW);
+                    build_matched_.push_back(0);
+                    build_row_count_++;
                     continue;
                 }
 
@@ -128,16 +191,20 @@ bool HashJoinOperator::open() {
                 }
             }
 
+            if (emit_unmatched_build_) {
+                build_matched_.push_back(0);
+            }
+
             if (!is_nested_loop_) {
                 auto it = hash_table_.find(key_buf_);
                 if (it == hash_table_.end()) {
                     hash_table_.emplace(key_buf_, std::make_pair(row_idx, row_idx));
-                    next_row_.push_back(static_cast<size_t>(-1));
+                    next_row_.push_back(NO_ROW);
                 } else {
                     size_t prev_tail = it->second.second;
                     next_row_[prev_tail] = row_idx;
                     it->second.second = row_idx;
-                    next_row_.push_back(static_cast<size_t>(-1));
+                    next_row_.push_back(NO_ROW);
                 }
             }
         }
@@ -187,20 +254,69 @@ void HashJoinOperator::emitNullExtended(const Tuple& probe_tuple, Tuple& out) {
         std::fill(out.values.begin(), out.values.end(), makeNull());
     }
 
-    // LEFT joins are never swapped, so probe is always written-left
-    for (size_t i = 0; i < probe_width_ && i < probe_tuple.values.size(); ++i) {
-        out.values[i] = probe_tuple.values[i];
+    if (!swapped_) {
+        // [probe (written-left)][build (written-right)]
+        for (size_t i = 0; i < probe_width_ && i < probe_tuple.values.size(); ++i) {
+            out.values[i] = probe_tuple.values[i];
+        }
+        // Build slots remain V_NULL
+    } else {
+        // [build (written-left)][probe (written-right)]
+        // Build slots remain V_NULL
+        for (size_t i = 0; i < probe_width_ && i < probe_tuple.values.size(); ++i) {
+            out.values[written_left_width_ + i] = probe_tuple.values[i];
+        }
     }
-    // Build slots remain V_NULL
+}
+
+void HashJoinOperator::emitUnmatchedBuild(size_t build_idx, Tuple& out) {
+    if (out.values.size() != total_width_) {
+        out.values.resize(total_width_, makeNull());
+    } else {
+        std::fill(out.values.begin(), out.values.end(), makeNull());
+    }
+
+    size_t num_kept = kept_build_slots_.size();
+    size_t build_store_offset = build_idx * num_kept;
+
+    if (!swapped_) {
+        // [probe (written-left)][build (written-right)]
+        // Probe slots remain V_NULL
+        for (size_t s = 0; s < num_kept; ++s) {
+            size_t build_col_idx = kept_build_slots_[s];
+            out.values[probe_width_ + build_col_idx] = build_store_[build_store_offset + s];
+        }
+    } else {
+        // [build (written-left)][probe (written-right)]
+        for (size_t s = 0; s < num_kept; ++s) {
+            size_t build_col_idx = kept_build_slots_[s];
+            out.values[build_col_idx] = build_store_[build_store_offset + s];
+        }
+        // Probe slots remain V_NULL
+    }
 }
 
 bool HashJoinOperator::next(Tuple& out) {
     while (true) {
-        if (current_build_idx_ == static_cast<size_t>(-1)) {
+        if (current_build_idx_ == NO_ROW) {
             // Fetch next probe row
             if (!probe_child_->next(probe_tuple_buf_)) {
+                // Probe child exhausted. If emit_unmatched_build_ is enabled,
+                // drain remaining unmatched build rows in build order.
+                if (emit_unmatched_build_) {
+                    while (unmatched_build_cursor_ < build_row_count_) {
+                        size_t b_idx = unmatched_build_cursor_++;
+                        if (build_matched_[b_idx] == 0) {
+                            emitUnmatchedBuild(b_idx, out);
+                            unmatched_build_emitted_++;
+                            rows_output_++;
+                            return true;
+                        }
+                    }
+                }
                 return false;
             }
+
             probe_rows_read_++;
             // The probe state must own a copy of the current probe tuple
             current_probe_tuple_ = probe_tuple_buf_;
@@ -210,9 +326,10 @@ bool HashJoinOperator::next(Tuple& out) {
                 if (build_row_count_ > 0) {
                     current_build_idx_ = 0;
                 } else {
-                    current_build_idx_ = static_cast<size_t>(-1);
-                    if (join_type_ == JoinType::LEFT) {
+                    current_build_idx_ = NO_ROW;
+                    if (emit_unmatched_probe_) {
                         emitNullExtended(current_probe_tuple_, out);
+                        unmatched_probe_emitted_++;
                         rows_output_++;
                         return true;
                     }
@@ -239,37 +356,39 @@ bool HashJoinOperator::next(Tuple& out) {
                 }
 
                 if (has_null_key) {
-                    if (join_type_ == JoinType::LEFT) {
+                    if (emit_unmatched_probe_) {
                         emitNullExtended(current_probe_tuple_, out);
+                        unmatched_probe_emitted_++;
                         rows_output_++;
                         return true;
                     }
-                    continue; // Null keys never match in INNER join
+                    continue; // Null keys never match in INNER/RIGHT (unswapped)
                 }
 
                 encodeGroupKey(key_copies_.data(), key_copies_.size(), key_buf_);
                 auto it = hash_table_.find(key_buf_);
                 if (it == hash_table_.end()) {
-                    if (join_type_ == JoinType::LEFT) {
+                    if (emit_unmatched_probe_) {
                         emitNullExtended(current_probe_tuple_, out);
+                        unmatched_probe_emitted_++;
                         rows_output_++;
                         return true;
                     }
-                    continue; // No key match in INNER join
+                    continue; // No key match
                 }
                 current_build_idx_ = it->second.first; // head of chain
             }
         }
 
         // Walk candidate build rows for the current probe row
-        while (current_build_idx_ != static_cast<size_t>(-1)) {
+        while (current_build_idx_ != NO_ROW) {
             size_t b_idx = current_build_idx_;
 
             // Advance current_build_idx_ for the subsequent call
             if (is_nested_loop_) {
                 current_build_idx_++;
                 if (current_build_idx_ >= build_row_count_) {
-                    current_build_idx_ = static_cast<size_t>(-1);
+                    current_build_idx_ = NO_ROW;
                 }
             } else {
                 current_build_idx_ = next_row_[b_idx];
@@ -285,15 +404,21 @@ bool HashJoinOperator::next(Tuple& out) {
                 }
             }
 
+            // Both equi-keys and residual passed! Mark matched.
             probe_matched_ = true;
+            if (emit_unmatched_build_) {
+                build_matched_[b_idx] = 1;
+            }
+
             out = combined_tuple_;
             rows_output_++;
             return true;
         }
 
         // Reached end of candidate build rows for this probe row
-        if (!probe_matched_ && join_type_ == JoinType::LEFT) {
+        if (!probe_matched_ && emit_unmatched_probe_) {
             emitNullExtended(current_probe_tuple_, out);
+            unmatched_probe_emitted_++;
             rows_output_++;
             return true;
         }
@@ -302,8 +427,9 @@ bool HashJoinOperator::next(Tuple& out) {
 
 void HashJoinOperator::close() {
     if (join_stats_) {
-        std::fprintf(stderr, "join: build rows stored %zu, probe rows read %zu, rows output %zu\n",
-                     build_row_count_, probe_rows_read_, rows_output_);
+        std::fprintf(stderr, "join: build rows stored %zu, probe rows read %zu, rows output %zu, unmatched probe rows %zu, unmatched build rows %zu\n",
+                     build_row_count_, probe_rows_read_, rows_output_,
+                     unmatched_probe_emitted_, unmatched_build_emitted_);
         join_stats_ = false; // avoid printing twice if close() called multiple times
     }
 
@@ -316,9 +442,10 @@ void HashJoinOperator::close() {
 
     build_store_.clear();
     next_row_.clear();
+    build_matched_.clear();
     hash_table_.clear();
     build_row_count_ = 0;
-    current_build_idx_ = static_cast<size_t>(-1);
+    current_build_idx_ = NO_ROW;
 }
 
 const std::vector<std::string>& HashJoinOperator::columnNames() const {

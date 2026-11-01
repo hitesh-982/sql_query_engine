@@ -27,6 +27,7 @@ int main(int argc, char* argv[]) {
     bool opt_explain = false;
     bool opt_no_output = false;
     bool opt_no_pushdown = false;
+    bool opt_no_join_swap = false;
     bool opt_join_stats = false;
     size_t opt_max_groups = 0;
     size_t opt_memory_limit_mb = 512;
@@ -62,6 +63,8 @@ int main(int argc, char* argv[]) {
             opt_no_output = true;
         } else if (arg == "--no-pushdown") {
             opt_no_pushdown = true;
+        } else if (arg == "--no-join-swap") {
+            opt_no_join_swap = true;
         } else if (arg == "--join-stats") {
             opt_join_stats = true;
         } else if (arg == "--max-groups" && i + 1 < argc) {
@@ -132,6 +135,7 @@ int main(int argc, char* argv[]) {
         plan_options.sort_stats = opt_sort_stats;
         plan_options.sort_fan_in = opt_sort_fan_in;
         plan_options.no_pushdown = opt_no_pushdown;
+        plan_options.no_join_swap = opt_no_join_swap;
         plan_options.join_stats = opt_join_stats;
 
         Plan plan = buildPlan(stmt, table_args, plan_options);
