@@ -43,21 +43,23 @@ run_bench_query() {
     local out_file="$4"
 
     echo "Running Query $q_id: $desc..." >&2
-    local start_ns
-    local end_ns
-    start_ns=$(date +%s%N)
-    
+    local time_err="$BENCH_DIR/time_err_$q_id.tmp"
     if [ -n "$out_file" ]; then
-        eval "$cmd" > "$out_file"
+        eval "$PYTHON \"$REPO_ROOT/tools/time_cmd.py\" $cmd" > "$out_file" 2> "$time_err"
     else
-        eval "$cmd" > /dev/null
+        eval "$PYTHON \"$REPO_ROOT/tools/time_cmd.py\" $cmd" > /dev/null 2> "$time_err"
     fi
     
-    end_ns=$(date +%s%N)
-    local elapsed_ms=$(( (end_ns - start_ns) / 1000000 ))
-    local elapsed_sec=$(awk "BEGIN {printf \"%.3f\", $elapsed_ms / 1000}")
-    echo "  -> Completed in ${elapsed_sec}s" >&2
-    echo "$elapsed_sec"
+    local time_info
+    time_info=$(cat "$time_err")
+    rm -f "$time_err"
+    echo "  -> $time_info" >&2
+
+    local elapsed_sec
+    elapsed_sec=$(echo "$time_info" | awk -F'|' '{print $1}' | sed 's/Elapsed: //; s/ s//; s/ //g')
+    local peak_rss
+    peak_rss=$(echo "$time_info" | awk -F'|' '{print $2}' | sed 's/Peak RSS: //; s/ //g')
+    echo "${elapsed_sec}|${peak_rss}"
 }
 
 Q2_OUT="$BENCH_DIR/q2.out"
@@ -67,16 +69,22 @@ PUSHDOWN_NO_OUT="$BENCH_DIR/pushdown_no.out"
 
 echo "--------------------------------------------------------------------------------"
 # Query 1: Scan baseline
-T1=$(run_bench_query 1 "Scan baseline (SELECT COUNT(*) FROM orders)" \
+RES1=$(run_bench_query 1 "Scan baseline (SELECT COUNT(*) FROM orders)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --sql 'SELECT COUNT(*) FROM orders'" "")
+T1=$(echo "$RES1" | cut -d'|' -f1)
+RSS1=$(echo "$RES1" | cut -d'|' -f2)
 
 # Query 2: Standard INNER join (orders o JOIN customers c)
-T2=$(run_bench_query 2 "Standard INNER join (orders o JOIN customers c)" \
+RES2=$(run_bench_query 2 "Standard INNER join (orders o JOIN customers c)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --sql 'SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id LIMIT 1000'" "$Q2_OUT")
+T2=$(echo "$RES2" | cut -d'|' -f1)
+RSS2=$(echo "$RES2" | cut -d'|' -f2)
 
 # Query 3: Swapped candidate INNER join (customers c JOIN orders o)
-T3=$(run_bench_query 3 "Swapped candidate INNER join (customers c JOIN orders o)" \
+RES3=$(run_bench_query 3 "Swapped candidate INNER join (customers c JOIN orders o)" \
     "$ENGINE_BIN --table customers='$CUSTOMERS_CSV' --table orders='$ORDERS_CSV' --sql 'SELECT o.id, c.name, o.amount FROM customers c JOIN orders o ON c.id = o.cust_id ORDER BY o.id LIMIT 1000'" "$Q3_OUT")
+T3=$(echo "$RES3" | cut -d'|' -f1)
+RSS3=$(echo "$RES3" | cut -d'|' -f2)
 
 # Verification: cmp Q2 and Q3
 CMP_Q2_Q3="FAIL"
@@ -88,24 +96,34 @@ else
 fi
 
 # Query 4: GROUP BY over join
-T4=$(run_bench_query 4 "GROUP BY over join (region, count, sum)" \
+RES4=$(run_bench_query 4 "GROUP BY over join (region, count, sum)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --sql 'SELECT c.region, COUNT(*), SUM(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region'" "")
+T4=$(echo "$RES4" | cut -d'|' -f1)
+RSS4=$(echo "$RES4" | cut -d'|' -f2)
 
 # Query 5: Anti-join (LEFT JOIN WHERE c.id IS NULL)
-T5=$(run_bench_query 5 "Anti-join (LEFT JOIN ... WHERE c.id IS NULL)" \
+RES5=$(run_bench_query 5 "Anti-join (LEFT JOIN ... WHERE c.id IS NULL)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --sql 'SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.id IS NULL'" "")
+T5=$(echo "$RES5" | cut -d'|' -f1)
+RSS5=$(echo "$RES5" | cut -d'|' -f2)
 
 # Query 6: 3-table join
-T6=$(run_bench_query 6 "3-table join (orders -> customers -> products)" \
+RES6=$(run_bench_query 6 "3-table join (orders -> customers -> products)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --table products='$PRODUCTS_CSV' --sql 'SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id'" "")
+T6=$(echo "$RES6" | cut -d'|' -f1)
+RSS6=$(echo "$RES6" | cut -d'|' -f2)
 
 # Query 7a: Pushdown enabled
-T7A=$(run_bench_query "7a" "Pushdown ENABLED (selective WHERE o.amount > 5000)" \
+RES7A=$(run_bench_query "7a" "Pushdown ENABLED (selective WHERE o.amount > 5000)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --sql 'SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 5000 ORDER BY o.id LIMIT 500'" "$PUSHDOWN_YES_OUT")
+T7A=$(echo "$RES7A" | cut -d'|' -f1)
+RSS7A=$(echo "$RES7A" | cut -d'|' -f2)
 
 # Query 7b: Pushdown disabled (--no-pushdown)
-T7B=$(run_bench_query "7b" "Pushdown DISABLED (--no-pushdown)" \
+RES7B=$(run_bench_query "7b" "Pushdown DISABLED (--no-pushdown)" \
     "$ENGINE_BIN --table orders='$ORDERS_CSV' --table customers='$CUSTOMERS_CSV' --no-pushdown --sql 'SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 5000 ORDER BY o.id LIMIT 500'" "$PUSHDOWN_NO_OUT")
+T7B=$(echo "$RES7B" | cut -d'|' -f1)
+RSS7B=$(echo "$RES7B" | cut -d'|' -f2)
 
 CMP_PUSHDOWN="FAIL"
 if cmp -s "$PUSHDOWN_YES_OUT" "$PUSHDOWN_NO_OUT"; then
@@ -115,15 +133,15 @@ fi
 
 echo ""
 echo "=== Phase 5 Benchmark Summary Table ==="
-printf "%-8s | %-45s | %-12s | %-20s\n" "Query" "Description" "Time (s)" "Verification"
-echo "---------+-----------------------------------------------+--------------+---------------------"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q1" "Scan baseline (SELECT COUNT(*))" "${T1}s" "N/A"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q2" "Standard INNER join" "${T2}s" "Matches Q3: ${CMP_Q2_Q3}"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q3" "Swapped INNER join (customers JOIN orders)" "${T3}s" "Matches Q2: ${CMP_Q2_Q3}"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q4" "GROUP BY over join" "${T4}s" "N/A"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q5" "Anti-join (LEFT JOIN ... WHERE c.id IS NULL)" "${T5}s" "N/A"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q6" "3-table join (orders + cust + prod)" "${T6}s" "N/A"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q7a" "Pushdown enabled" "${T7A}s" "Matches Q7b: ${CMP_PUSHDOWN}"
-printf "%-8s | %-45s | %-12s | %-20s\n" "Q7b" "Pushdown disabled (--no-pushdown)" "${T7B}s" "Matches Q7a: ${CMP_PUSHDOWN}"
-echo "================================================================================"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Query" "Description" "Time (s)" "Peak RSS" "Verification"
+echo "---------+----------------------------------------------+------------+------------+---------------------"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q1" "Scan baseline (SELECT COUNT(*))" "${T1}s" "$RSS1" "N/A"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q2" "Standard INNER join" "${T2}s" "$RSS2" "Matches Q3: ${CMP_Q2_Q3}"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q3" "Swapped INNER join (customers JOIN orders)" "${T3}s" "$RSS3" "Matches Q2: ${CMP_Q2_Q3}"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q4" "GROUP BY over join" "${T4}s" "$RSS4" "N/A"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q5" "Anti-join (LEFT JOIN ... WHERE c.id IS NULL)" "${T5}s" "$RSS5" "N/A"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q6" "3-table join (orders + cust + prod)" "${T6}s" "$RSS6" "N/A"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q7a" "Pushdown enabled" "${T7A}s" "$RSS7A" "Matches Q7b: ${CMP_PUSHDOWN}"
+printf "%-8s | %-44s | %-10s | %-10s | %-20s\n" "Q7b" "Pushdown disabled (--no-pushdown)" "${T7B}s" "$RSS7B" "Matches Q7a: ${CMP_PUSHDOWN}"
+echo "=========================================================================================="
 
