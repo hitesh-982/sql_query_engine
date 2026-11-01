@@ -11,3 +11,6 @@ tests/data/
 __pycache__/
 *.pyc
 *.csv
+engine_profile
+engine_asan
+gmon.out

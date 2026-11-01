@@ -55,10 +55,16 @@ test_join: $(OBJS_TEST_JOIN)
 sqlparse_sanitized: $(SRCS_SQLPARSE)
 	$(CXX) $(CXXFLAGS) -fsanitize=address,undefined -o $@ $^
 
+profile: $(SRCS_ENGINE)
+	$(CXX) -O2 -g -fno-omit-frame-pointer -pg -std=c++17 -Wall -Wextra -o engine_profile $^
+
+asan: $(SRCS_ENGINE)
+	$(CXX) -O2 -g -fsanitize=address,undefined -std=c++17 -Wall -Wextra -o engine_asan $^
+
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 clean:
-	rm -f src/*.o tests/*.o engine sqlparse test_lexer test_eval test_agg test_sort test_join sqlparse_sanitized
+	rm -f src/*.o tests/*.o engine sqlparse test_lexer test_eval test_agg test_sort test_join sqlparse_sanitized engine_profile engine_asan gmon.out
 
-.PHONY: all clean
+.PHONY: all clean profile asan
