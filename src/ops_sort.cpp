@@ -611,33 +611,138 @@ void SortOperator::addRunToLevel(int fd, size_t level) {
 // ----------------------------------------------------------------------------
 // Spill in-memory batch to a new level 0 run
 // ----------------------------------------------------------------------------
+struct CompactSortKey {
+    union {
+        int64_t i;
+        double d;
+        const char* s_ptr;
+    } payload;
+    uint32_t row_idx;
+    uint16_t s_len;
+    uint8_t type;
+    uint8_t flags;
+};
+static_assert(sizeof(CompactSortKey) == 16, "CompactSortKey must be 16 bytes");
+
+static inline Value unpackValue(const CompactSortKey& k) {
+    Value v;
+    v.type = static_cast<ValueType>(k.type);
+    switch (v.type) {
+        case V_NULL: break;
+        case V_INT: v.i = k.payload.i; break;
+        case V_FLOAT: v.d = k.payload.d; break;
+        case V_STRING: v.s = std::string_view(k.payload.s_ptr, k.s_len); break;
+    }
+    return v;
+}
+
+static inline int compareCompactKey(const CompactSortKey& a, const CompactSortKey& b) {
+    if (a.type == V_NULL && b.type == V_NULL) return 0;
+    if (a.type == V_NULL) return -1;
+    if (b.type == V_NULL) return 1;
+
+    if (a.type == V_INT && b.type == V_INT) {
+        if (a.payload.i < b.payload.i) return -1;
+        if (a.payload.i > b.payload.i) return 1;
+        return 0;
+    }
+    if (a.type == V_FLOAT && b.type == V_FLOAT) {
+        if (a.payload.d < b.payload.d) return -1;
+        if (a.payload.d > b.payload.d) return 1;
+        return 0;
+    }
+    if (a.type == V_STRING && b.type == V_STRING) {
+        size_t min_len = a.s_len < b.s_len ? a.s_len : b.s_len;
+        int cmp = std::memcmp(a.payload.s_ptr, b.payload.s_ptr, min_len);
+        if (cmp != 0) return cmp < 0 ? -1 : 1;
+        if (a.s_len < b.s_len) return -1;
+        if (a.s_len > b.s_len) return 1;
+        return 0;
+    }
+    Value va = unpackValue(a);
+    Value vb = unpackValue(b);
+    return compareValues(va, vb);
+}
+
+struct SortItemComp {
+    bool desc0;
+    const SortTerm* terms;
+    size_t num_terms;
+    const Value* flat;
+    size_t width;
+
+    inline bool operator()(const CompactSortKey& a, const CompactSortKey& b) const {
+        int cmp = compareCompactKey(a, b);
+        if (cmp != 0) {
+            return desc0 ? (cmp > 0) : (cmp < 0);
+        }
+        if (num_terms > 1) {
+            int rest = compareSortRows(
+                flat + static_cast<size_t>(a.row_idx) * width, a.row_idx,
+                flat + static_cast<size_t>(b.row_idx) * width, b.row_idx,
+                terms + 1, num_terms - 1
+            );
+            if (rest != 0) return rest < 0;
+        }
+        return a.row_idx < b.row_idx;
+    }
+};
+
+static void sortPermutationFast(
+    std::vector<size_t>& permutation,
+    const std::vector<Value>& flat_values,
+    size_t width,
+    const std::vector<SortTerm>& sort_terms
+) {
+    size_t n = permutation.size();
+    if (n <= 1 || sort_terms.empty()) return;
+
+    std::vector<CompactSortKey> items(n);
+    size_t slot0 = sort_terms[0].slot_idx;
+    for (size_t i = 0; i < n; ++i) {
+        size_t r = permutation[i];
+        Value v = flat_values[r * width + slot0];
+        CompactSortKey& k = items[i];
+        k.type = static_cast<uint8_t>(v.type);
+        k.flags = 0;
+        k.row_idx = static_cast<uint32_t>(r);
+        switch (v.type) {
+            case V_NULL:
+                k.payload.i = 0;
+                k.s_len = 0;
+                break;
+            case V_INT:
+                k.payload.i = v.i;
+                k.s_len = 0;
+                break;
+            case V_FLOAT:
+                k.payload.d = v.d;
+                k.s_len = 0;
+                break;
+            case V_STRING:
+                k.payload.s_ptr = v.s.data();
+                k.s_len = static_cast<uint16_t>(std::min<size_t>(v.s.size(), 65535));
+                break;
+        }
+    }
+
+    SortItemComp comp{
+        sort_terms[0].descending,
+        sort_terms.data(),
+        sort_terms.size(),
+        flat_values.data(),
+        width
+    };
+    std::sort(items.begin(), items.end(), comp);
+    for (size_t i = 0; i < n; ++i) {
+        permutation[i] = items[i].row_idx;
+    }
+}
+
 void SortOperator::spillCurrentBatch() {
     if (permutation_.empty()) return;
 
-    struct BatchComparator {
-        const Value* flat;
-        const size_t* seqs;
-        size_t width;
-        const SortTerm* terms;
-        size_t num_terms;
-
-        bool operator()(size_t a, size_t b) const {
-            return compareSortRows(
-                flat + a * width, seqs[a],
-                flat + b * width, seqs[b],
-                terms, num_terms
-            ) < 0;
-        }
-    };
-
-    BatchComparator comp{
-        flat_values_.data(),
-        row_seqs_.data(),
-        width_,
-        sort_terms_.data(),
-        sort_terms_.size()
-    };
-    std::sort(permutation_.begin(), permutation_.end(), comp);
+    sortPermutationFast(permutation_, flat_values_, width_, sort_terms_);
 
     int out_fd = createTempFile();
     RunWriter writer(out_fd);
@@ -783,31 +888,8 @@ bool SortOperator::open() {
     if (total_initial_runs_ == 0) {
         // Case 1: Entire dataset fit in memory! No spills occurred.
         max_entries_held_ = permutation_.size();
-
-        struct InMemComp {
-            const Value* flat;
-            const size_t* seqs;
-            size_t width;
-            const SortTerm* terms;
-            size_t num_terms;
-
-            bool operator()(size_t a, size_t b) const {
-                return compareSortRows(
-                    flat + a * width, seqs[a],
-                    flat + b * width, seqs[b],
-                    terms, num_terms
-                ) < 0;
-            }
-        };
-
-        InMemComp comp{
-            flat_values_.data(),
-            row_seqs_.data(),
-            width_,
-            sort_terms_.data(),
-            sort_terms_.size()
-        };
-        std::sort(permutation_.begin(), permutation_.end(), comp);
+        std::vector<size_t>().swap(row_seqs_);
+        sortPermutationFast(permutation_, flat_values_, width_, sort_terms_);
         external_mode_ = false;
         return true;
     }

@@ -76,7 +76,7 @@ def run_sqlite(conn, sql):
         }
 
 
-def format_side_by_side(eng_res, sq_res, max_display_rows=20):
+def format_side_by_side(eng_res, sq_res, max_display_rows=20, sql=""):
     lines = []
     lines.append("=" * 100)
     lines.append(f"{'QUERY ENGINE':<48} | {'SQLITE ORACLE':<48}")
@@ -103,7 +103,7 @@ def format_side_by_side(eng_res, sq_res, max_display_rows=20):
     s_rows = sq_res["rows"]
     same_count = len(e_rows) == len(s_rows)
 
-    is_ordered = bool(re.search(r"\border\s+by\b", sql, re.IGNORECASE)) if "sql" in locals() else True
+    is_ordered = bool(re.search(r"\border\s+by\b", sql, re.IGNORECASE))
     e_comp = e_rows
     s_comp = s_rows
     if not is_ordered and same_count and len(e_rows) > 0:
@@ -164,7 +164,7 @@ def main():
     eng_res = run_engine(args.engine, table_map, args.sql)
     sq_res = run_sqlite(conn, args.sql)
 
-    output = format_side_by_side(eng_res, sq_res, args.max_rows)
+    output = format_side_by_side(eng_res, sq_res, args.max_rows, sql=args.sql)
     print(output)
     conn.close()
 
