@@ -85,9 +85,13 @@ size_t CsvScanner::fileSize() const {
 void CsvScanner::setNeededColumns(const std::vector<size_t>& needed_cols) {
     filtering_needed_cols_ = true;
     needed_cols_mask_.assign(columns_.size(), false);
+    max_needed_col_ = -1;
     for (size_t c : needed_cols) {
         if (c < needed_cols_mask_.size()) {
             needed_cols_mask_[c] = true;
+            if (static_cast<int>(c) > max_needed_col_) {
+                max_needed_col_ = static_cast<int>(c);
+            }
         }
     }
 }
@@ -107,6 +111,7 @@ void CsvScanner::close() {
     current_line_num_ = 0;
     columns_.clear();
     filtering_needed_cols_ = false;
+    max_needed_col_ = -1;
     needed_cols_mask_.clear();
     // Clearing arena drops all heap strings allocated for unescaped quoted fields
     quote_arena_.clear();
@@ -154,9 +159,9 @@ bool CsvScanner::open(const char* path) {
     // Parse column names from the header
     Row header_row;
     if (memchr(header_line, '"', header_len) != nullptr) {
-        parseRowQuoted(header_line, header_len, header_row);
+        parseRowQuoted(header_line, header_len, header_row, 1000000);
     } else {
-        parseRowFast(header_line, header_len, header_row);
+        parseRowFast(header_line, header_len, header_row, 1000000);
     }
 
     for (std::string_view col_sv : header_row.fields) {
@@ -170,6 +175,8 @@ bool CsvScanner::open(const char* path) {
         // If column was quoted, quotes were already removed in parseRowQuoted
         columns_.push_back({std::string(col_sv), TYPE_STRING});
     }
+
+    max_needed_col_ = static_cast<int>(columns_.size()) - 1;
 
     // Record position of the first data row
     data_start_pos_ = cur_pos_;
@@ -232,17 +239,20 @@ bool CsvScanner::readLine(const char*& line_start, size_t& line_len) {
     return false;
 }
 
-void CsvScanner::parseRowFast(const char* line_start, size_t line_len, Row& row) {
+void CsvScanner::parseRowFast(const char* line_start, size_t line_len, Row& row, int max_col) {
     row.fields.clear();
     const char* p = line_start;
     const char* end = line_start + line_len;
     const char* field_start = p;
 
-    // Fast path: simple scan for commas with no heap allocations
+    // Fast path: scan for commas and stop as soon as max_col is satisfied.
     while (p < end) {
         if (*p == ',') {
             row.fields.emplace_back(field_start, static_cast<size_t>(p - field_start));
             field_start = p + 1;
+            if (static_cast<int>(row.fields.size()) > max_col) {
+                return;
+            }
         }
         p++;
     }
@@ -251,20 +261,25 @@ void CsvScanner::parseRowFast(const char* line_start, size_t line_len, Row& row)
 
     // Pad missing fields with empty string_view (SQL NULL)
     if (columns_.size() > 0 && row.fields.size() < columns_.size()) {
-        row.fields.resize(columns_.size(), std::string_view{});
-    } else if (columns_.size() > 0 && row.fields.size() > columns_.size()) {
-        // Ignore extra fields beyond the header definition
-        row.fields.resize(columns_.size());
+        size_t target_size = (max_col >= 0 && static_cast<size_t>(max_col + 1) < columns_.size())
+                             ? static_cast<size_t>(max_col + 1)
+                             : columns_.size();
+        if (row.fields.size() < target_size) {
+            row.fields.resize(target_size, std::string_view{});
+        }
     }
 }
 
-void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& row) {
+void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& row, int max_col) {
     row.fields.clear();
     const char* p = line_start;
     const char* end = line_start + line_len;
     size_t col_idx = 0;
 
     while (p <= end) {
+        if (static_cast<int>(col_idx) > max_col) {
+            return;
+        }
         if (p == end) {
             // Trailing comma resulted in an empty field at the end of the line
             row.fields.emplace_back("");
@@ -334,6 +349,10 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
             }
             col_idx++;
 
+            if (static_cast<int>(col_idx) > max_col) {
+                return;
+            }
+
             // Consume characters up to the next comma delimiter
             while (p < end && *p != ',') {
                 p++;
@@ -349,6 +368,11 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
             }
             row.fields.emplace_back(field_start, static_cast<size_t>(p - field_start));
             col_idx++;
+
+            if (static_cast<int>(col_idx) > max_col) {
+                return;
+            }
+
             if (p < end && *p == ',') {
                 p++; // Skip delimiter
             }
@@ -357,10 +381,12 @@ void CsvScanner::parseRowQuoted(const char* line_start, size_t line_len, Row& ro
 
     // Pad missing fields with empty string_view (SQL NULL)
     if (columns_.size() > 0 && row.fields.size() < columns_.size()) {
-        row.fields.resize(columns_.size(), std::string_view{});
-    } else if (columns_.size() > 0 && row.fields.size() > columns_.size()) {
-        // Ignore extra fields beyond the header definition
-        row.fields.resize(columns_.size());
+        size_t target_size = (max_col >= 0 && static_cast<size_t>(max_col + 1) < columns_.size())
+                             ? static_cast<size_t>(max_col + 1)
+                             : columns_.size();
+        if (row.fields.size() < target_size) {
+            row.fields.resize(target_size, std::string_view{});
+        }
     }
 }
 
@@ -372,13 +398,18 @@ bool CsvScanner::nextRow(Row& row) {
         return false;
     }
 
-    // Check if line contains double quotes to choose fast path vs slow path
-    if (memchr(line_start, '"', line_len) != nullptr) {
-        parseRowQuoted(line_start, line_len, row);
-    } else {
-        parseRowFast(line_start, line_len, row);
+    // Fast path: if query needs 0 columns (e.g. COUNT(*)), do not split fields
+    if (max_needed_col_ < 0) {
+        row.fields.clear();
+        return true;
     }
 
+    // Check if line contains double quotes using vector-accelerated memchr
+    if (memchr(line_start, '"', line_len) != nullptr) {
+        parseRowQuoted(line_start, line_len, row, max_needed_col_);
+    } else {
+        parseRowFast(line_start, line_len, row, max_needed_col_);
+    }
     return true;
 }
 
@@ -393,6 +424,7 @@ void CsvScanner::inferColumnTypes() {
 
     Row temp_row;
     size_t rows_scanned = 0;
+    int max_col = static_cast<int>(num_cols) - 1;
 
     while (rows_scanned < 10000) {
         const char* line_start = nullptr;
@@ -402,9 +434,9 @@ void CsvScanner::inferColumnTypes() {
         }
 
         if (memchr(line_start, '"', line_len) != nullptr) {
-            parseRowQuoted(line_start, line_len, temp_row);
+            parseRowQuoted(line_start, line_len, temp_row, max_col);
         } else {
-            parseRowFast(line_start, line_len, temp_row);
+            parseRowFast(line_start, line_len, temp_row, max_col);
         }
 
         rows_scanned++;

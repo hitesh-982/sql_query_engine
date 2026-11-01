@@ -58,7 +58,9 @@ private:
 
     // Set of columns requested by the query. If filtering_needed_cols_ is true,
     // quoted fields containing "" in unneeded columns are not copied or unescaped.
+    // max_needed_col_ specifies the highest column index needed (or -1 if none needed).
     bool filtering_needed_cols_ = false;
+    int max_needed_col_ = -1;
     std::vector<bool> needed_cols_mask_;
 
     // Arena for unescaped quoted fields. std::deque guarantees pointer stability
@@ -67,8 +69,8 @@ private:
 
     // Helpers
     bool readLine(const char*& line_start, size_t& line_len);
-    void parseRowFast(const char* line_start, size_t line_len, Row& row);
-    void parseRowQuoted(const char* line_start, size_t line_len, Row& row);
+    void parseRowFast(const char* line_start, size_t line_len, Row& row, int max_col);
+    void parseRowQuoted(const char* line_start, size_t line_len, Row& row, int max_col);
     void inferColumnTypes();
 };
 
