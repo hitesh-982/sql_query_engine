@@ -1,0 +1,673 @@
+[
+  {
+    "name": "p5_inner_basic",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_reversed_on",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON c.id = o.cust_id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_explicit_keyword",
+    "sql": "SELECT o.id, c.name FROM orders o INNER JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_unqualified_tables",
+    "sql": "SELECT orders.id, customers.name FROM orders JOIN customers ON orders.cust_id = customers.id ORDER BY orders.id, customers.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_star_all",
+    "sql": "SELECT * FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_star_qualified_probe",
+    "sql": "SELECT o.*, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_star_qualified_build",
+    "sql": "SELECT o.id, c.* FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_constants",
+    "sql": "SELECT 42, 'Order:', o.id, 'Cust:', c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_strings",
+    "sql": "SELECT c.name, o.status, c.region FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_arithmetic",
+    "sql": "SELECT o.id, o.qty * 10, o.amount + 5.5, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_reversed_written_order",
+    "sql": "SELECT c.name, o.id, o.amount FROM customers c JOIN orders o ON c.id = o.cust_id ORDER BY c.id, o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_swapped_candidate",
+    "sql": "SELECT c.name, o.id, o.amount FROM customers c JOIN orders o ON c.id = o.cust_id WHERE o.amount > 100 ORDER BY c.id, o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_zero_kept_build_cols",
+    "sql": "SELECT o.id, o.amount, o.status FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, o.amount, o.status LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_zero_kept_probe_cols",
+    "sql": "SELECT c.id, c.name, c.region FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY c.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_count_star",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_inner_multi_col_key",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND o.id = c.id ORDER BY o.id, c.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_string_key",
+    "sql": "SELECT o.id, o.status, c.name, c.region FROM orders o JOIN customers c ON o.status = c.region ORDER BY o.id, c.name, c.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_int_vs_float_key",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_key_expr_arithmetic",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id + 0 = c.id + 0 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_three_equi_keys",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND o.id = c.id AND o.status = c.region ORDER BY o.id, c.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_multi_col_reversed",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON c.id = o.cust_id AND c.id = o.id ORDER BY o.id, c.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_inner_composite_key_count",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id AND o.id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_inner_string_key_count",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.status = c.region",
+    "ordered": false
+  },
+  {
+    "name": "p5_inner_expr_key_count",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id + 1 = c.id + 1",
+    "ordered": false
+  },
+  {
+    "name": "p5_inner_multi_col_where",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND o.id = c.id WHERE o.amount > 50 ORDER BY o.id, c.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_inequality_probe",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id AND o.amount > 500 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_inequality_build",
+    "sql": "SELECT o.id, c.name, c.region FROM orders o JOIN customers c ON o.cust_id = c.id AND c.region = 'North' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_cross_table_inequality",
+    "sql": "SELECT o.id, c.name, o.qty, c.id FROM orders o JOIN customers c ON o.cust_id = c.id AND o.qty < c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_like_pattern",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND c.name LIKE 'Customer_1%' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_is_not_null",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND c.note IS NOT NULL ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_constant_true",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND 1 = 1 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_constant_false",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND 1 = 0",
+    "ordered": false
+  },
+  {
+    "name": "p5_residual_or_condition",
+    "sql": "SELECT o.id, c.name, c.region FROM orders o JOIN customers c ON o.cust_id = c.id AND (c.region = 'North' OR c.region = 'South') ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_between",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id AND o.amount BETWEEN 100 AND 1000 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_residual_multiple_conjuncts",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id AND o.amount > 50 AND c.region != 'West' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_less_than",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON o.id < c.id WHERE o.id <= 5 AND c.id <= 5 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_greater_than",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON o.id > c.id WHERE o.id <= 5 AND c.id <= 5 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_between",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON o.id BETWEEN c.id AND c.id + 2 WHERE o.id <= 6 AND c.id <= 4 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_cross_true",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON 1 = 1 WHERE o.id <= 3 AND c.id <= 3 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_not_equal",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON o.id != c.id WHERE o.id <= 3 AND c.id <= 3 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_string_less_than",
+    "sql": "SELECT o.status, c.region FROM orders o JOIN customers c ON o.status < c.region WHERE o.id <= 3 AND c.id <= 3 ORDER BY o.status, c.region, o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_arithmetic_inequality",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON o.id * 2 < c.id WHERE o.id <= 5 AND c.id <= 15 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_complex_or",
+    "sql": "SELECT o.id, c.id FROM orders o JOIN customers c ON (o.id = c.id OR o.id = c.id + 1) WHERE o.id <= 5 AND c.id <= 5 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_nl_count_small",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.id < c.id WHERE o.id <= 10 AND c.id <= 10",
+    "ordered": false
+  },
+  {
+    "name": "p5_nl_with_limit",
+    "sql": "SELECT o.id, c.id, c.name FROM orders o JOIN customers c ON o.id < c.id WHERE o.id <= 20 ORDER BY o.id, c.id, c.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_basic",
+    "sql": "SELECT o.id, o.cust_id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_outer_keyword",
+    "sql": "SELECT o.id, o.cust_id, c.name FROM orders o LEFT OUTER JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_anti_join_id_null",
+    "sql": "SELECT o.id, o.cust_id FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.id IS NULL ORDER BY o.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_anti_join_name_null",
+    "sql": "SELECT o.id, o.cust_id FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.name IS NULL ORDER BY o.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_probe_null_key",
+    "sql": "SELECT o.id, o.cust_id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE o.cust_id IS NULL ORDER BY o.id, c.name LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_residual_in_on",
+    "sql": "SELECT o.id, o.cust_id, c.name, c.region FROM orders o LEFT JOIN customers c ON o.cust_id = c.id AND c.region = 'North' ORDER BY o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_filter_on_probe",
+    "sql": "SELECT o.id, o.cust_id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE o.amount > 500 ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_filter_on_build",
+    "sql": "SELECT o.id, o.cust_id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.region = 'North' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_star",
+    "sql": "SELECT * FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_zero_kept_build_cols",
+    "sql": "SELECT o.id, o.amount, o.status FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, o.amount, o.status LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_count_star",
+    "sql": "SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_left_count_build_id",
+    "sql": "SELECT COUNT(c.id), COUNT(o.id) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_left_nl_less_than",
+    "sql": "SELECT o.id, c.id FROM orders o LEFT JOIN customers c ON o.id < c.id WHERE o.id <= 5 AND c.id <= 3 ORDER BY o.id, c.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_reversed_tables",
+    "sql": "SELECT c.id, c.name, o.id, o.amount FROM customers c LEFT JOIN orders o ON c.id = o.cust_id ORDER BY c.id, o.id, c.name LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5_left_reversed_anti_join",
+    "sql": "SELECT c.id, c.name FROM customers c LEFT JOIN orders o ON c.id = o.cust_id WHERE o.id IS NULL ORDER BY c.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_inner_inner",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_inner_left",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_left_inner",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_left_left",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_where_probe",
+    "sql": "SELECT o.id, c.name, p.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id WHERE o.amount > 500 ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_where_multiple_tables",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id WHERE c.region = 'North' AND p.price > 20 ORDER BY o.id, c.name, p.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_star",
+    "sql": "SELECT * FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name LIMIT 5",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_arithmetic",
+    "sql": "SELECT o.id, o.qty * p.price, c.name FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_join_on_second_table",
+    "sql": "SELECT o.id, c.name, p.category FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON c.id = p.id ORDER BY o.id, p.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_count_star",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_3way_left_count_star",
+    "sql": "SELECT COUNT(*) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_3way_residuals",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id AND c.region = 'East' JOIN products p ON o.product_id = p.id AND p.price > 10 ORDER BY o.id, c.name, p.name LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_aggregate_group",
+    "sql": "SELECT p.category, COUNT(*), AVG(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id GROUP BY p.category ORDER BY p.category",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_aggregate_having",
+    "sql": "SELECT c.region, p.category, COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id GROUP BY c.region, p.category HAVING COUNT(*) > 1 ORDER BY c.region, p.category",
+    "ordered": true
+  },
+  {
+    "name": "p5_3way_order_limit",
+    "sql": "SELECT o.id, c.name, p.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.amount DESC, o.id ASC, c.name ASC, p.name ASC LIMIT 10 OFFSET 5",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_orders_cust",
+    "sql": "SELECT o1.id, o2.id, o1.cust_id FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 50 ORDER BY o1.id, o2.id LIMIT 25",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_orders_count",
+    "sql": "SELECT COUNT(*) FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 50",
+    "ordered": false
+  },
+  {
+    "name": "p5_self_customers_region",
+    "sql": "SELECT c1.id, c2.id, c1.region FROM customers c1 JOIN customers c2 ON c1.region = c2.region WHERE c1.id < c2.id AND c1.id <= 20 AND c2.id <= 20 ORDER BY c1.id, c2.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_customers_count",
+    "sql": "SELECT COUNT(*) FROM customers c1 JOIN customers c2 ON c1.region = c2.region WHERE c1.id < c2.id AND c1.id <= 30 AND c2.id <= 30",
+    "ordered": false
+  },
+  {
+    "name": "p5_self_orders_amount_diff",
+    "sql": "SELECT o1.id, o2.id, o1.amount - o2.amount FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 30 ORDER BY o1.id, o2.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_products_category",
+    "sql": "SELECT p1.id, p2.id, p1.category FROM products p1 JOIN products p2 ON p1.category = p2.category WHERE p1.id < p2.id AND p1.id <= 15 AND p2.id <= 15 ORDER BY p1.id, p2.id",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_left_join",
+    "sql": "SELECT o1.id, o2.id FROM orders o1 LEFT JOIN orders o2 ON o1.cust_id = o2.cust_id AND o1.id != o2.id WHERE o1.id <= 10 ORDER BY o1.id, o2.id LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_join_star",
+    "sql": "SELECT o1.*, o2.id FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 10 ORDER BY o1.id, o2.id LIMIT 10",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_join_group_by",
+    "sql": "SELECT o1.cust_id, COUNT(*) FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 50 GROUP BY o1.cust_id ORDER BY o1.cust_id LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_self_join_having",
+    "sql": "SELECT o1.cust_id, COUNT(*) FROM orders o1 JOIN orders o2 ON o1.cust_id = o2.cust_id WHERE o1.id < o2.id AND o1.id <= 100 GROUP BY o1.cust_id HAVING COUNT(*) > 1 ORDER BY o1.cust_id",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_count_group_region",
+    "sql": "SELECT c.region, COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_sum_amount_group_region",
+    "sql": "SELECT c.region, SUM(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_avg_count_group_region",
+    "sql": "SELECT c.region, COUNT(*), AVG(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_min_max_group_region",
+    "sql": "SELECT c.region, MIN(o.amount), MAX(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_group_region_status",
+    "sql": "SELECT c.region, o.status, COUNT(*), SUM(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region, o.status ORDER BY c.region, o.status",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_having_count",
+    "sql": "SELECT c.region, COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region HAVING COUNT(*) > 5 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_having_sum",
+    "sql": "SELECT c.region, SUM(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region HAVING SUM(o.amount) > 1000 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_where_and_having",
+    "sql": "SELECT c.region, COUNT(*), SUM(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 50 GROUP BY c.region HAVING COUNT(*) > 2 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_scalar_aggregates_all",
+    "sql": "SELECT COUNT(*), SUM(o.amount), AVG(o.amount), MIN(o.amount), MAX(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_agg_left_join_group",
+    "sql": "SELECT c.region, COUNT(o.id), COUNT(*) FROM customers c LEFT JOIN orders o ON c.id = o.cust_id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_left_join_having",
+    "sql": "SELECT c.region, COUNT(o.id) FROM customers c LEFT JOIN orders o ON c.id = o.cust_id GROUP BY c.region HAVING COUNT(o.id) > 0 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_product_join_group",
+    "sql": "SELECT p.category, COUNT(*), SUM(o.qty) FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.category ORDER BY p.category",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_product_join_having",
+    "sql": "SELECT p.category, AVG(p.price) FROM orders o JOIN products p ON o.product_id = p.id GROUP BY p.category HAVING AVG(p.price) > 5 ORDER BY p.category",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_count_distinct_not_supported_but_count_col",
+    "sql": "SELECT c.region, COUNT(o.cust_id) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_agg_arithmetic_inside_agg",
+    "sql": "SELECT c.region, SUM(o.qty * o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_asc_desc",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id ASC, c.name ASC LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_alias",
+    "sql": "SELECT o.id AS order_id, c.name AS cust_name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY order_id DESC, cust_name ASC LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_ordinal",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY 3 DESC, 1 ASC, 2 ASC LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_expr_arithmetic",
+    "sql": "SELECT o.id, c.name, o.qty * o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.qty * o.amount DESC, o.id ASC, c.name ASC LIMIT 15",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_agg_not_in_select_count",
+    "sql": "SELECT c.region FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY COUNT(*) DESC, c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_order_agg_not_in_select_sum",
+    "sql": "SELECT c.region FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY SUM(o.amount) DESC, c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_distinct_single_col",
+    "sql": "SELECT DISTINCT c.region FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_distinct_two_cols",
+    "sql": "SELECT DISTINCT c.region, o.status FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY c.region, o.status",
+    "ordered": true
+  },
+  {
+    "name": "p5_distinct_with_where",
+    "sql": "SELECT DISTINCT c.region FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 100 ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "p5_limit_offset_basic",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 10 OFFSET 5",
+    "ordered": true
+  },
+  {
+    "name": "p5_offset_with_large_limit",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 1000 OFFSET 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_top_n_heap_small",
+    "sql": "SELECT o.id, o.amount, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id ASC, c.name ASC LIMIT 5",
+    "ordered": true
+  },
+  {
+    "name": "p5_top_n_heap_with_offset",
+    "sql": "SELECT o.id, o.amount, c.name FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id ASC, c.name ASC LIMIT 5 OFFSET 3",
+    "ordered": true
+  },
+  {
+    "name": "p5_external_sort_join",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id ASC, c.name ASC",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--memory-limit-mb",
+      "1",
+      "--sort-fan-in",
+      "4",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY o.amount DESC, o.id ASC, c.name ASC"
+    ]
+  },
+  {
+    "name": "p5_no_pushdown_verification",
+    "sql": "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 100 AND c.region = 'North' ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true,
+    "engine_args": [
+      "--table",
+      "orders={orders}",
+      "--table",
+      "customers={customers}",
+      "--no-pushdown",
+      "--sql",
+      "SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 100 AND c.region = 'North' ORDER BY o.id, c.name LIMIT 20"
+    ]
+  },
+  {
+    "name": "p5_edge_empty_customers_inner",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_empty_customers_left",
+    "sql": "SELECT o.id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_edge_empty_orders_inner",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_empty_orders_left",
+    "sql": "SELECT o.id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_all_null_keys_inner",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_all_null_keys_left",
+    "sql": "SELECT o.id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_edge_no_overlap_inner",
+    "sql": "SELECT o.id, c.name FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_no_overlap_left",
+    "sql": "SELECT o.id, c.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id ORDER BY o.id, c.name LIMIT 20",
+    "ordered": true
+  },
+  {
+    "name": "p5_edge_giant_key_count",
+    "sql": "SELECT COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_giant_key_group",
+    "sql": "SELECT o.cust_id, COUNT(*) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY o.cust_id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_one_row_inner",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_one_row_left",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id",
+    "ordered": false
+  },
+  {
+    "name": "p5_edge_crlf_inner",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o JOIN customers c ON o.cust_id = c.id JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_edge_crlf_left",
+    "sql": "SELECT o.id, c.name, p.name FROM orders o LEFT JOIN customers c ON o.cust_id = c.id LEFT JOIN products p ON o.product_id = p.id ORDER BY o.id, c.name, p.name",
+    "ordered": true
+  },
+  {
+    "name": "p5_edge_crlf_note_quoted",
+    "sql": "SELECT c.id, c.note FROM orders o JOIN customers c ON o.cust_id = c.id ORDER BY c.id, c.note, o.id",
+    "ordered": true
+  }
+]

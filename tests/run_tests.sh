@@ -74,6 +74,16 @@ if [ -x "./test_sort" ]; then
     fi
 fi
 
+if [ -x "./test_join" ]; then
+    echo "--- Running test_join unit and property tests ---"
+    if ./test_join; then
+        echo "[OK] test_join passed"
+    else
+        echo "[FAIL] test_join failed"
+        FAILED=1
+    fi
+fi
+
 # 3. Generate 100k-row test dataset and edge datasets
 DATA_100K="$DATA_DIR/data_100k.csv"
 if [ ! -f "$DATA_100K" ]; then
@@ -99,6 +109,14 @@ if [ ! -f "$DATA_DIR/text_sum.csv" ]; then
 fi
 if [ ! -f "$DATA_DIR/nan_inf.csv" ]; then
     printf "id,val\n1,nan\n2,inf\n3,-inf\n4,Infinity\n5,0x1p3\n6,42\n7,3.14\n" > "$DATA_DIR/nan_inf.csv"
+fi
+
+# Generate join datasets and edge sets in tests/data/join_data
+JOIN_DATA_DIR="$DATA_DIR/join_data"
+if [ ! -f "$JOIN_DATA_DIR/orders.csv" ]; then
+    echo "--- Generating join test datasets in $JOIN_DATA_DIR ---"
+    "$PYTHON" tools/gen_data.py --join-tables "$JOIN_DATA_DIR" --orders 10000 --customers 1000 --products 100 --seed 42
+    echo "[OK] Generated join tables in $JOIN_DATA_DIR"
 fi
 
 # 4. Run error tests (exit 2 for semantic/syntax, exit 3 for unsupported, exit 4 for runtime failure)
@@ -207,9 +225,60 @@ if [ -x "$ENGINE_BIN" ]; then
         "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT id FROM t HAVING id > 5\"" \
         3 "not implemented yet: HAVING clause on a non-aggregate query"
 
-    check_error "JOIN" \
-        "$ENGINE_BIN --table t='$DATA_100K' --sql \"SELECT t.id FROM t JOIN customers c ON t.id = c.id\"" \
-        3 "not implemented yet: JOIN"
+    # Phase 5: Unsupported join syntax (exit 3)
+    check_error "RIGHT JOIN unsupported" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o RIGHT JOIN customers c ON o.cust_id = c.id\"" \
+        3 "not implemented yet: RIGHT JOIN"
+
+    check_error "FULL JOIN unsupported" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o FULL JOIN customers c ON o.cust_id = c.id\"" \
+        3 "not implemented yet: FULL JOIN"
+
+    check_error "USING unsupported" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o JOIN customers c USING (id)\"" \
+        3 "not implemented yet: USING"
+
+    check_error "NATURAL JOIN unsupported" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders o NATURAL JOIN customers c\"" \
+        3 "not implemented yet: NATURAL JOIN"
+
+    # Phase 5: Multi-table semantic errors (exit 2)
+    check_error "Ambiguous column name" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT id FROM orders o JOIN customers c ON o.cust_id = c.id\"" \
+        2 "ambiguous column name"
+
+    check_error "Unknown table qualifier" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --sql \"SELECT x.id FROM orders o\"" \
+        2 "unknown table qualifier"
+
+    check_error "Alias hides table name" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --sql \"SELECT orders.id FROM orders o\"" \
+        2 "hides table name"
+
+    check_error "Duplicate table alias" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT o.id FROM orders o JOIN customers o ON o.cust_id = o.id\"" \
+        2 "duplicate table name or alias"
+
+    check_error "Duplicate table argument" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table orders='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT 1 FROM orders\"" \
+        2 "duplicate table name"
+
+    check_error "Aggregate in ON clause" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT o.id FROM orders o JOIN customers c ON count(*) = 1\"" \
+        2 "misuse of aggregate function in ON"
+
+    check_error "ON references later table" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --table products='$JOIN_DATA_DIR/products.csv' --sql \"SELECT o.id FROM orders o JOIN customers c ON o.cust_id = p.id JOIN products p ON o.product_id = p.id\"" \
+        2 "unknown table qualifier"
+
+    # Phase 5: Join parse errors (exit 1)
+    check_error "Comma join parse error" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders, customers\"" \
+        1 "unexpected token"
+
+    check_error "Missing ON parse error" \
+        "$ENGINE_BIN --table orders='$JOIN_DATA_DIR/orders.csv' --table customers='$JOIN_DATA_DIR/customers.csv' --sql \"SELECT * FROM orders JOIN customers\"" \
+        1 "expected ON"
 
     # Exit 4: Runtime overflow / resource limits
     check_error "SUM 64-bit integer overflow" \
@@ -346,6 +415,86 @@ if [ -x "$ENGINE_BIN" ]; then
             FAILED=1
         }
     fi
+
+    # Phase 5: Join comparisons against SQLite
+    echo "--- Running Phase 5 Join Comparisons against SQLite ---"
+    echo "Testing 130 join queries on base dataset..."
+    if ! "$PYTHON" tools/compare.py \
+        --table orders="$JOIN_DATA_DIR/orders.csv" \
+        --table customers="$JOIN_DATA_DIR/customers.csv" \
+        --table products="$JOIN_DATA_DIR/products.csv" \
+        --engine "$ENGINE_BIN" \
+        --queries tests/queries_join.json; then
+        FAILED=1
+    fi
+
+    # Test on all 7 join edge sets
+    JOIN_EDGE_DIR="$JOIN_DATA_DIR/edge"
+    for edge_subdir in "$JOIN_EDGE_DIR"/*; do
+        if [ -d "$edge_subdir" ]; then
+            edge_name=$(basename "$edge_subdir")
+            echo "Testing join queries on edge set $edge_name..."
+            p_file="$edge_subdir/products.csv"
+            if [ ! -f "$p_file" ]; then
+                p_file="$JOIN_DATA_DIR/products.csv"
+            fi
+            if ! "$PYTHON" tools/compare.py \
+                --table orders="$edge_subdir/orders.csv" \
+                --table customers="$edge_subdir/customers.csv" \
+                --table products="$p_file" \
+                --engine "$ENGINE_BIN" \
+                --queries tests/queries_join.json; then
+                FAILED=1
+            fi
+        fi
+    done
+
+    # Self-check: verify identical output with and without --no-pushdown
+    echo "Testing filter pushdown self-check (with vs without --no-pushdown)..."
+    PUSHDOWN_Q="SELECT o.id, c.name, o.amount FROM orders o JOIN customers c ON o.cust_id = c.id WHERE o.amount > 500 AND c.region = 'North' ORDER BY o.id, c.name"
+    TMP_PD_DIR=$(mktemp -d)
+    "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --sql "$PUSHDOWN_Q" > "$TMP_PD_DIR/with_pushdown.out"
+    "$ENGINE_BIN" --table orders="$JOIN_DATA_DIR/orders.csv" --table customers="$JOIN_DATA_DIR/customers.csv" --no-pushdown --sql "$PUSHDOWN_Q" > "$TMP_PD_DIR/without_pushdown.out"
+    if ! diff -q "$TMP_PD_DIR/with_pushdown.out" "$TMP_PD_DIR/without_pushdown.out"; then
+        echo "[FAIL] Pushdown outputs differ!"
+        FAILED=1
+    else
+        echo "[OK] Filter pushdown self-check: outputs are byte-for-byte identical!"
+    fi
+    rm -rf "$TMP_PD_DIR"
+
+    # Scale test: 1M orders / 20k customers verification against SQLite
+    echo "Testing 1M orders / 20k customers scale join against SQLite..."
+    SCALE_JOIN_DIR=$(mktemp -d)
+    "$PYTHON" tools/gen_data.py --join-tables "$SCALE_JOIN_DIR" --orders 1000000 --customers 20000 --products 1000 --no-edges
+    SCALE_Q_JSON="$SCALE_JOIN_DIR/scale_queries.json"
+    cat << 'EOF' > "$SCALE_Q_JSON"
+[
+  {
+    "name": "scale_1m_join_group_by",
+    "sql": "SELECT c.region, count(*), sum(o.amount) FROM orders o JOIN customers c ON o.cust_id = c.id GROUP BY c.region ORDER BY c.region",
+    "ordered": true
+  },
+  {
+    "name": "scale_1m_join_anti",
+    "sql": "SELECT count(*) FROM orders o LEFT JOIN customers c ON o.cust_id = c.id WHERE c.id IS NULL",
+    "ordered": false
+  }
+]
+EOF
+
+    if ! "$PYTHON" tools/compare.py \
+        --table orders="$SCALE_JOIN_DIR/orders.csv" \
+        --table customers="$SCALE_JOIN_DIR/customers.csv" \
+        --table products="$SCALE_JOIN_DIR/products.csv" \
+        --engine "$ENGINE_BIN" \
+        --queries "$SCALE_Q_JSON"; then
+        echo "[FAIL] 1M orders / 20k customers scale join failed!"
+        FAILED=1
+    else
+        echo "[OK] 1M orders / 20k customers scale join matches SQLite exactly!"
+    fi
+    rm -rf "$SCALE_JOIN_DIR"
 fi
 
 # 6. Run parser tests (Phase 4) if test_parser.sh exists

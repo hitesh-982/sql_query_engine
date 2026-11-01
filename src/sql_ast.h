@@ -96,6 +96,8 @@ struct JoinClause {
     JoinType type;
     TableRef table;
     std::unique_ptr<Expr> on_expr;
+    bool is_natural = false;
+    bool is_using = false;
 
     std::string toSExpr() const;
     std::string toSql() const;

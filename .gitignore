@@ -6,6 +6,7 @@ test_lexer
 test_eval
 test_agg
 test_sort
+test_join
 tests/data/
 __pycache__/
 *.pyc

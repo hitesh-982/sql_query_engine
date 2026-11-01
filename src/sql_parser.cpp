@@ -116,7 +116,8 @@ SelectStmt SqlParser::parseSelect() {
            check(TokenKind::KEYWORD, "inner") ||
            check(TokenKind::KEYWORD, "left") ||
            check(TokenKind::KEYWORD, "right") ||
-           check(TokenKind::KEYWORD, "full")) {
+           check(TokenKind::KEYWORD, "full") ||
+           check(TokenKind::KEYWORD, "natural")) {
         stmt.joins.push_back(parseJoinClause());
     }
 
@@ -230,7 +231,8 @@ SelectItem SqlParser::parseSelectItem() {
         if (next_lower != "from" && next_lower != "where" && next_lower != "group" &&
             next_lower != "having" && next_lower != "order" && next_lower != "limit" &&
             next_lower != "join" && next_lower != "inner" && next_lower != "left" &&
-            next_lower != "right" && next_lower != "full") {
+            next_lower != "right" && next_lower != "full" && next_lower != "natural" &&
+            next_lower != "using") {
             item.alias = advance().text;
         }
     }
@@ -251,7 +253,8 @@ TableRef SqlParser::parseTableRef() {
         if (next_lower != "join" && next_lower != "inner" && next_lower != "left" &&
             next_lower != "right" && next_lower != "full" && next_lower != "where" &&
             next_lower != "group" && next_lower != "having" && next_lower != "order" &&
-            next_lower != "limit" && next_lower != "on") {
+            next_lower != "limit" && next_lower != "on" && next_lower != "natural" &&
+            next_lower != "using") {
             tbl.alias = advance().text;
         }
     }
@@ -262,6 +265,30 @@ TableRef SqlParser::parseTableRef() {
 JoinClause SqlParser::parseJoinClause() {
     JoinClause j;
     j.type = JoinType::INNER;
+
+    if (match(TokenKind::KEYWORD, "natural")) {
+        j.is_natural = true;
+        if (match(TokenKind::KEYWORD, "inner")) {
+            j.type = JoinType::INNER;
+            expect(TokenKind::KEYWORD, "join", "expected JOIN after NATURAL INNER");
+        } else if (match(TokenKind::KEYWORD, "left")) {
+            j.type = JoinType::LEFT;
+            match(TokenKind::KEYWORD, "outer");
+            expect(TokenKind::KEYWORD, "join", "expected JOIN after NATURAL LEFT [OUTER]");
+        } else if (match(TokenKind::KEYWORD, "right")) {
+            j.type = JoinType::RIGHT;
+            match(TokenKind::KEYWORD, "outer");
+            expect(TokenKind::KEYWORD, "join", "expected JOIN after NATURAL RIGHT [OUTER]");
+        } else if (match(TokenKind::KEYWORD, "full")) {
+            j.type = JoinType::FULL;
+            match(TokenKind::KEYWORD, "outer");
+            expect(TokenKind::KEYWORD, "join", "expected JOIN after NATURAL FULL [OUTER]");
+        } else {
+            expect(TokenKind::KEYWORD, "join", "expected JOIN after NATURAL");
+        }
+        j.table = parseTableRef();
+        return j;
+    }
 
     if (match(TokenKind::KEYWORD, "inner")) {
         j.type = JoinType::INNER;
@@ -285,6 +312,17 @@ JoinClause SqlParser::parseJoinClause() {
     }
 
     j.table = parseTableRef();
+    if (match(TokenKind::KEYWORD, "using")) {
+        j.is_using = true;
+        expect(TokenKind::OPERATOR, "(", "expected '(' after USING");
+        while (true) {
+            expect(TokenKind::IDENTIFIER, "", "expected column name in USING");
+            if (match(TokenKind::OPERATOR, ",")) continue;
+            break;
+        }
+        expect(TokenKind::OPERATOR, ")", "expected ')' after USING column list");
+        return j;
+    }
     expect(TokenKind::KEYWORD, "on", "expected ON after JOIN table");
     j.on_expr = parseExpression();
 

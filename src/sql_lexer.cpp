@@ -15,7 +15,7 @@ static const std::unordered_set<std::string> RESERVED_KEYWORDS = {
     "select", "distinct", "from", "as", "join", "inner", "left", "right",
     "full", "outer", "on", "where", "group", "by", "having", "order",
     "asc", "desc", "limit", "offset", "and", "or", "not", "is", "null",
-    "in", "between", "like", "true", "false"
+    "in", "between", "like", "true", "false", "natural", "using"
 };
 
 SqlLexer::SqlLexer(std::string_view sql)

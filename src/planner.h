@@ -50,6 +50,18 @@ struct Plan {
     size_t visible_width = 0;
     size_t hidden_columns_count = 0;
 
+    // Join info for explain
+    struct JoinPlanInfo {
+        std::string join_type;
+        std::string probe_side;
+        std::string build_side;
+        bool swapped = false;
+        bool is_nested_loop = false;
+        std::vector<std::pair<std::string, std::string>> equi_keys;
+        std::string residual_sql;
+    };
+    std::vector<JoinPlanInfo> join_plans;
+
     void explain(FILE* out) const;
 };
 
@@ -59,16 +71,27 @@ struct PlanOptions {
     std::string tmp_dir = "/tmp";
     bool sort_stats = false;
     size_t sort_fan_in = 64;
+    bool no_pushdown = false;
+    bool join_stats = false;
 };
 
-// Build an executable execution plan from a parsed SelectStmt
-Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, const PlanOptions& options);
+// Check if a table scan can legally receive pushed-down filters
+bool isTablePushdownLegal(size_t table_idx, const std::vector<JoinClause>& joins);
 
-// Backwards-compatible overload
+// Build an executable execution plan from a parsed SelectStmt
+Plan buildPlan(const SelectStmt& stmt, const std::vector<std::string>& table_args, const PlanOptions& options);
+
+// Backwards-compatible overloads
+inline Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, const PlanOptions& options) {
+    std::vector<std::string> args = {table_arg};
+    return buildPlan(stmt, args, options);
+}
+
 inline Plan buildPlan(const SelectStmt& stmt, const std::string& table_arg, size_t max_groups = 0) {
     PlanOptions options;
     options.max_groups = max_groups;
-    return buildPlan(stmt, table_arg, options);
+    std::vector<std::string> args = {table_arg};
+    return buildPlan(stmt, args, options);
 }
 
 #endif // PLANNER_H

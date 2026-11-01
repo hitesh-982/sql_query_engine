@@ -74,8 +74,7 @@ bool isEntirelyNumeric(std::string_view s, Value& out_num) {
 
 std::unique_ptr<BoundExpr> bindExpr(
     const Expr* ast_expr,
-    const TableRef& from_table,
-    const std::vector<Column>& schema,
+    const MultiTableScope& scope,
     std::deque<std::string>& literal_arena
 ) {
     if (!ast_expr) return nullptr;
@@ -110,77 +109,125 @@ std::unique_ptr<BoundExpr> bindExpr(
 
         case ExprKind::COLUMN_REF: {
             bound->kind = BoundExprKind::COLUMN_REF;
-            // Validate table qualifier if present
+            std::string target_lower = toLower(ast_expr->col_name);
+
             if (!ast_expr->table_name.empty()) {
                 std::string prefix_lower = toLower(ast_expr->table_name);
-                std::string table_lower = toLower(from_table.name);
-                std::string alias_lower = toLower(from_table.alias);
-                if (prefix_lower != table_lower && (alias_lower.empty() || prefix_lower != alias_lower)) {
+                const TableScope* matched_table = nullptr;
+
+                for (const auto& ts : scope.tables) {
+                    std::string alias_lower = toLower(ts.alias);
+                    std::string name_lower = toLower(ts.name);
+
+                    if (!alias_lower.empty()) {
+                        if (prefix_lower == alias_lower) {
+                            matched_table = &ts;
+                            break;
+                        } else if (prefix_lower == name_lower) {
+                            // Table has an alias, so referencing table.col is an error in SQLite
+                            std::cerr << "Error: table alias '" << ts.alias << "' hides table name '" << ts.name << "'\n";
+                            std::exit(2);
+                        }
+                    } else {
+                        if (prefix_lower == name_lower) {
+                            matched_table = &ts;
+                            break;
+                        }
+                    }
+                }
+
+                if (!matched_table) {
                     std::cerr << "Error: unknown table qualifier '" << ast_expr->table_name << "'\n";
                     std::exit(2);
                 }
-            }
 
-            std::string target_lower = toLower(ast_expr->col_name);
-            int found_idx = -1;
-            for (size_t c = 0; c < schema.size(); ++c) {
-                if (toLower(schema[c].name) == target_lower) {
-                    found_idx = static_cast<int>(c);
-                    break;
+                int found_c = -1;
+                for (size_t c = 0; c < matched_table->schema.size(); ++c) {
+                    if (toLower(matched_table->schema[c].name) == target_lower) {
+                        found_c = static_cast<int>(c);
+                        break;
+                    }
                 }
-            }
-            if (found_idx < 0) {
-                std::cerr << "Error: unknown column '" << ast_expr->col_name << "'\n";
-                std::exit(2);
-            }
+                if (found_c < 0) {
+                    std::cerr << "Error: unknown column '" << ast_expr->col_name << "'\n";
+                    std::exit(2);
+                }
 
-            bound->col_idx = static_cast<size_t>(found_idx);
-            bound->col_name = schema[found_idx].name;
-            if (schema[found_idx].type == TYPE_STRING) {
-                bound->affinity = Affinity::TEXT;
+                bound->col_idx = matched_table->tuple_offset + static_cast<size_t>(found_c);
+                bound->col_name = matched_table->schema[found_c].name;
+                bound->affinity = (matched_table->schema[found_c].type == TYPE_STRING ? Affinity::TEXT : Affinity::NUMERIC);
+                return bound;
             } else {
-                bound->affinity = Affinity::NUMERIC;
+                // Unqualified column reference: search all tables in scope
+                int match_count = 0;
+                size_t resolved_idx = 0;
+                std::string resolved_name;
+                ColType resolved_type = TYPE_STRING;
+
+                for (const auto& ts : scope.tables) {
+                    for (size_t c = 0; c < ts.schema.size(); ++c) {
+                        if (toLower(ts.schema[c].name) == target_lower) {
+                            match_count++;
+                            resolved_idx = ts.tuple_offset + c;
+                            resolved_name = ts.schema[c].name;
+                            resolved_type = ts.schema[c].type;
+                            break; // at most one match per table
+                        }
+                    }
+                }
+
+                if (match_count == 0) {
+                    std::cerr << "Error: unknown column '" << ast_expr->col_name << "'\n";
+                    std::exit(2);
+                } else if (match_count > 1) {
+                    std::cerr << "Error: ambiguous column name: " << ast_expr->col_name << "\n";
+                    std::exit(2);
+                }
+
+                bound->col_idx = resolved_idx;
+                bound->col_name = resolved_name;
+                bound->affinity = (resolved_type == TYPE_STRING ? Affinity::TEXT : Affinity::NUMERIC);
+                return bound;
             }
-            return bound;
         }
 
         case ExprKind::UNARY_OP:
             bound->kind = BoundExprKind::UNARY_OP;
             bound->op = toLower(ast_expr->op);
-            bound->left = bindExpr(ast_expr->child.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->child.get(), scope, literal_arena);
             bound->affinity = Affinity::NONE;
             return bound;
 
         case ExprKind::BINARY_OP:
             bound->kind = BoundExprKind::BINARY_OP;
             bound->op = toLower(ast_expr->op);
-            bound->left = bindExpr(ast_expr->left.get(), from_table, schema, literal_arena);
-            bound->right = bindExpr(ast_expr->right.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->left.get(), scope, literal_arena);
+            bound->right = bindExpr(ast_expr->right.get(), scope, literal_arena);
             bound->affinity = Affinity::NONE;
             return bound;
 
         case ExprKind::IS_NULL:
             bound->kind = BoundExprKind::IS_NULL;
             bound->is_not = ast_expr->is_not;
-            bound->left = bindExpr(ast_expr->child.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->child.get(), scope, literal_arena);
             bound->affinity = Affinity::NONE;
             return bound;
 
         case ExprKind::BETWEEN:
             bound->kind = BoundExprKind::BETWEEN;
             bound->is_not = ast_expr->is_not;
-            bound->left = bindExpr(ast_expr->between_expr.get(), from_table, schema, literal_arena);
-            bound->between_low = bindExpr(ast_expr->between_low.get(), from_table, schema, literal_arena);
-            bound->between_high = bindExpr(ast_expr->between_high.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->between_expr.get(), scope, literal_arena);
+            bound->between_low = bindExpr(ast_expr->between_low.get(), scope, literal_arena);
+            bound->between_high = bindExpr(ast_expr->between_high.get(), scope, literal_arena);
             bound->affinity = Affinity::NONE;
             return bound;
 
         case ExprKind::IN_LIST:
             bound->kind = BoundExprKind::IN_LIST;
             bound->is_not = ast_expr->is_not;
-            bound->left = bindExpr(ast_expr->in_expr.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->in_expr.get(), scope, literal_arena);
             for (const auto& item : ast_expr->in_list) {
-                bound->in_list.push_back(bindExpr(item.get(), from_table, schema, literal_arena));
+                bound->in_list.push_back(bindExpr(item.get(), scope, literal_arena));
             }
             bound->affinity = Affinity::NONE;
             return bound;
@@ -188,8 +235,8 @@ std::unique_ptr<BoundExpr> bindExpr(
         case ExprKind::LIKE:
             bound->kind = BoundExprKind::LIKE;
             bound->is_not = ast_expr->is_not;
-            bound->left = bindExpr(ast_expr->like_expr.get(), from_table, schema, literal_arena);
-            bound->like_pattern = bindExpr(ast_expr->like_pattern.get(), from_table, schema, literal_arena);
+            bound->left = bindExpr(ast_expr->like_expr.get(), scope, literal_arena);
+            bound->like_pattern = bindExpr(ast_expr->like_pattern.get(), scope, literal_arena);
             bound->affinity = Affinity::NONE;
             return bound;
 
@@ -237,6 +284,26 @@ static Value evalThreeValuedNot(Value v) {
     return makeInt(isTruthy(v) ? 0 : 1);
 }
 
+Value normalizeKeyForAffinity(Value val, Affinity own_aff, Affinity other_aff, char* text_buf, size_t buf_size) {
+    if (val.type == V_NULL) {
+        return val;
+    }
+    if (other_aff == Affinity::NUMERIC && (own_aff == Affinity::TEXT || own_aff == Affinity::NONE)) {
+        if (val.type == V_STRING) {
+            Value converted;
+            if (isEntirelyNumeric(val.s, converted)) {
+                return converted;
+            }
+        }
+    } else if (other_aff == Affinity::TEXT && own_aff == Affinity::NONE) {
+        if (val.type == V_INT || val.type == V_FLOAT) {
+            size_t n = formatValueToBuffer(val, text_buf, buf_size);
+            return makeString(std::string_view(text_buf, n));
+        }
+    }
+    return val;
+}
+
 static Value evalComparison(Value l, Affinity l_aff, Value r, Affinity r_aff, const std::string& op) {
     if (l.type == V_NULL || r.type == V_NULL) {
         return makeNull();
@@ -246,31 +313,8 @@ static Value evalComparison(Value l, Affinity l_aff, Value r, Affinity r_aff, co
     char text_buf_l[64];
     char text_buf_r[64];
 
-    if (l_aff == Affinity::NUMERIC && (r_aff == Affinity::TEXT || r_aff == Affinity::NONE)) {
-        if (r.type == V_STRING) {
-            Value converted;
-            if (isEntirelyNumeric(r.s, converted)) {
-                r = converted;
-            }
-        }
-    } else if (r_aff == Affinity::NUMERIC && (l_aff == Affinity::TEXT || l_aff == Affinity::NONE)) {
-        if (l.type == V_STRING) {
-            Value converted;
-            if (isEntirelyNumeric(l.s, converted)) {
-                l = converted;
-            }
-        }
-    } else if (l_aff == Affinity::TEXT && r_aff == Affinity::NONE) {
-        if (r.type == V_INT || r.type == V_FLOAT) {
-            size_t n = formatValueToBuffer(r, text_buf_r, sizeof(text_buf_r));
-            r = makeString(std::string_view(text_buf_r, n));
-        }
-    } else if (r_aff == Affinity::TEXT && l_aff == Affinity::NONE) {
-        if (l.type == V_INT || l.type == V_FLOAT) {
-            size_t n = formatValueToBuffer(l, text_buf_l, sizeof(text_buf_l));
-            l = makeString(std::string_view(text_buf_l, n));
-        }
-    }
+    l = normalizeKeyForAffinity(l, l_aff, r_aff, text_buf_l, sizeof(text_buf_l));
+    r = normalizeKeyForAffinity(r, r_aff, l_aff, text_buf_r, sizeof(text_buf_r));
 
     // Step 2: Compare values
     int cmp = compareValues(l, r);

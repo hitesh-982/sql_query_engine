@@ -94,9 +94,9 @@ def infer_column_types(csv_path):
         return list(zip(header, types))
 
 
-def load_csv_into_sqlite(csv_path, conn):
+def load_csv_into_sqlite(csv_path, conn, table_name="t"):
     """
-    Load CSV into SQLite table 't' with typed columns.
+    Load CSV into SQLite table `table_name` with typed columns.
     Empty CSV field means SQL NULL.
     """
     col_defs = infer_column_types(csv_path)
@@ -104,11 +104,11 @@ def load_csv_into_sqlite(csv_path, conn):
         return
         
     create_cols = [f'"{name}" {col_type}' for name, col_type in col_defs]
-    sql_create = f'CREATE TABLE t ({", ".join(create_cols)})'
+    sql_create = f'CREATE TABLE "{table_name}" ({", ".join(create_cols)})'
     conn.execute(sql_create)
     
     placeholders = ", ".join(["?"] * len(col_defs))
-    sql_insert = f'INSERT INTO t VALUES ({placeholders})'
+    sql_insert = f'INSERT INTO "{table_name}" VALUES ({placeholders})'
     
     with open(csv_path, "r", encoding="utf-8", errors="replace") as f:
         reader = csv.reader(f)
@@ -224,12 +224,18 @@ def rows_match(engine_row, sqlite_row):
     return True
 
 
-def run_test(query_info, csv_path, engine_bin, conn):
+def run_test(query_info, table_map, engine_bin, conn):
     q_name = query_info.get("name", "unnamed")
     sql = query_info.get("sql", "")
     raw_args = query_info.get("engine_args")
     if not raw_args:
-        raw_args = ["--table", "t={CSV}", "--sql", sql]
+        if len(table_map) == 1 and "t" in table_map:
+            raw_args = ["--table", "t={CSV}", "--sql", sql]
+        else:
+            raw_args = []
+            for tname in table_map:
+                raw_args.extend(["--table", f"{tname}={{{tname}}}"])
+            raw_args.extend(["--sql", sql])
     ordered = query_info.get("ordered", False)
     
     # Run SQLite
@@ -242,7 +248,14 @@ def run_test(query_info, csv_path, engine_bin, conn):
         return False
 
     # Run Engine
-    engine_cmd = [engine_bin] + [arg.replace("{CSV}", csv_path) for arg in raw_args]
+    engine_cmd = [engine_bin]
+    for arg in raw_args:
+        val = arg
+        if "{CSV}" in val and "t" in table_map:
+            val = val.replace("{CSV}", table_map["t"])
+        for tname, tpath in table_map.items():
+            val = val.replace("{" + tname + "}", tpath)
+        engine_cmd.append(val)
     try:
         proc = subprocess.run(
             engine_cmd,
@@ -331,14 +344,29 @@ def run_test(query_info, csv_path, engine_bin, conn):
 
 def main():
     parser = argparse.ArgumentParser(description="Compare query engine output against SQLite.")
-    parser.add_argument("--csv", required=True, help="Input CSV path")
+    parser.add_argument("--csv", required=False, default=None, help="Input CSV path")
+    parser.add_argument("--table", action="append", default=[], help="Table definition name=path")
     parser.add_argument("--engine", required=True, help="Path to engine executable")
     parser.add_argument("--queries", required=True, help="Path to queries.json")
     args = parser.parse_args()
     
-    if not os.path.isfile(args.csv):
-        print(f"Error: CSV file '{args.csv}' not found.", file=sys.stderr)
+    table_map = {}
+    if args.table:
+        for t_spec in args.table:
+            parts = t_spec.split("=", 1)
+            if len(parts) == 2:
+                table_map[parts[0]] = parts[1]
+    if args.csv:
+        table_map["t"] = args.csv
+        
+    if not table_map:
+        print("Error: either --csv or at least one --table must be provided.", file=sys.stderr)
         sys.exit(1)
+        
+    for tname, tpath in table_map.items():
+        if not os.path.isfile(tpath):
+            print(f"Error: CSV file '{tpath}' not found.", file=sys.stderr)
+            sys.exit(1)
         
     if not os.path.isfile(args.queries):
         print(f"Error: queries file '{args.queries}' not found.", file=sys.stderr)
@@ -348,11 +376,12 @@ def main():
         queries = json.load(f)
         
     conn = sqlite3.connect(":memory:")
-    load_csv_into_sqlite(args.csv, conn)
+    for tname, tpath in table_map.items():
+        load_csv_into_sqlite(tpath, conn, tname)
     
     all_passed = True
     for q in queries:
-        ok = run_test(q, args.csv, args.engine, conn)
+        ok = run_test(q, table_map, args.engine, conn)
         if not ok:
             all_passed = False
             

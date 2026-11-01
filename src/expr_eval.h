@@ -71,18 +71,54 @@ std::unique_ptr<BoundExpr> cloneBoundExpr(const BoundExpr* expr);
 // Check if string is entirely numeric (optional spaces, integer or float)
 bool isEntirelyNumeric(std::string_view s, Value& out_num);
 
-// Bind an AST Expr into a BoundExpr tree.
+// Applies SQLite comparison affinity normalization to a copy of a key value.
+// Never modifies emitted row tuples.
+Value normalizeKeyForAffinity(Value val, Affinity own_aff, Affinity other_aff, char* text_buf, size_t buf_size);
+
+// TableScope and MultiTableScope for multi-table queries
+struct TableScope {
+    std::string name;
+    std::string alias;
+    std::vector<Column> schema;
+    size_t tuple_offset = 0;
+    size_t tuple_width = 0;
+    std::string csv_path;
+};
+
+struct MultiTableScope {
+    std::vector<TableScope> tables;
+    size_t total_width = 0;
+};
+
+// Bind an AST Expr into a BoundExpr tree against a multi-table scope.
 // - Resolves column names (case-insensitive).
-// - Validates table qualifier (must match table name or alias).
-// - Exits 2 on unknown table or column.
-// - Exits 3 on unsupported constructs (aggregates, etc.).
+// - Validates table qualifier (alias hides table name, unknown table -> exit 2).
+// - Resolves unqualified columns across scope (unknown -> exit 2, ambiguous -> exit 2).
 // - String literals are stored in the provided literal arena.
 std::unique_ptr<BoundExpr> bindExpr(
+    const Expr* ast_expr,
+    const MultiTableScope& scope,
+    std::deque<std::string>& literal_arena
+);
+
+// Backwards-compatible overload for single-table queries
+inline std::unique_ptr<BoundExpr> bindExpr(
     const Expr* ast_expr,
     const TableRef& from_table,
     const std::vector<Column>& schema,
     std::deque<std::string>& literal_arena
-);
+) {
+    MultiTableScope scope;
+    TableScope ts;
+    ts.name = from_table.name;
+    ts.alias = from_table.alias;
+    ts.schema = schema;
+    ts.tuple_offset = 0;
+    ts.tuple_width = schema.size();
+    scope.tables.push_back(std::move(ts));
+    scope.total_width = schema.size();
+    return bindExpr(ast_expr, scope, literal_arena);
+}
 
 // Evaluate a BoundExpr against a Tuple.
 // S-expression/three-valued logic matching SQLite.

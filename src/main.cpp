@@ -18,7 +18,7 @@ static void printHeaderField(std::string_view field) {
 int main(int argc, char* argv[]) {
     std::string file_path;
     std::string select_cols;
-    std::string table_arg;
+    std::vector<std::string> table_args;
     std::string sql_query;
     bool mode_select = false;
     bool mode_schema = false;
@@ -26,6 +26,8 @@ int main(int argc, char* argv[]) {
     bool mode_sql = false;
     bool opt_explain = false;
     bool opt_no_output = false;
+    bool opt_no_pushdown = false;
+    bool opt_join_stats = false;
     size_t opt_max_groups = 0;
     size_t opt_memory_limit_mb = 512;
     std::string opt_tmp_dir;
@@ -50,7 +52,7 @@ int main(int argc, char* argv[]) {
         } else if (arg == "--count") {
             mode_count = true;
         } else if (arg == "--table" && i + 1 < argc) {
-            table_arg = argv[++i];
+            table_args.push_back(argv[++i]);
         } else if (arg == "--sql" && i + 1 < argc) {
             mode_sql = true;
             sql_query = argv[++i];
@@ -58,6 +60,10 @@ int main(int argc, char* argv[]) {
             opt_explain = true;
         } else if (arg == "--no-output") {
             opt_no_output = true;
+        } else if (arg == "--no-pushdown") {
+            opt_no_pushdown = true;
+        } else if (arg == "--join-stats") {
+            opt_join_stats = true;
         } else if (arg == "--max-groups" && i + 1 < argc) {
             opt_max_groups = static_cast<size_t>(std::stoull(argv[++i]));
         } else if (arg == "--memory-limit-mb" && i + 1 < argc) {
@@ -102,7 +108,7 @@ int main(int argc, char* argv[]) {
     // Mode: SQL Query (--table t=data.csv --sql "SELECT ...")
     // ------------------------------------------------------------------------
     if (mode_sql) {
-        if (table_arg.empty()) {
+        if (table_args.empty()) {
             std::cerr << "Error: missing --table argument for SQL query\n";
             return 2;
         }
@@ -125,8 +131,10 @@ int main(int argc, char* argv[]) {
         plan_options.tmp_dir = opt_tmp_dir;
         plan_options.sort_stats = opt_sort_stats;
         plan_options.sort_fan_in = opt_sort_fan_in;
+        plan_options.no_pushdown = opt_no_pushdown;
+        plan_options.join_stats = opt_join_stats;
 
-        Plan plan = buildPlan(stmt, table_arg, plan_options);
+        Plan plan = buildPlan(stmt, table_args, plan_options);
 
         if (opt_explain) {
             plan.explain(stdout);

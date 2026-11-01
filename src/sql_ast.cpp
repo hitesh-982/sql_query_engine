@@ -256,6 +256,7 @@ std::string SelectItem::toSql() const {
 std::string JoinClause::toSExpr() const {
     std::ostringstream oss;
     oss << "(join ";
+    if (is_natural) oss << "natural ";
     switch (type) {
         case JoinType::INNER: oss << "inner"; break;
         case JoinType::LEFT: oss << "left"; break;
@@ -266,12 +267,17 @@ std::string JoinClause::toSExpr() const {
     if (!table.alias.empty()) {
         oss << " as " << table.alias;
     }
-    oss << " (on " << on_expr->toSExpr() << "))";
+    if (on_expr) {
+        oss << " (on " << on_expr->toSExpr() << "))";
+    } else {
+        oss << ")";
+    }
     return oss.str();
 }
 
 std::string JoinClause::toSql() const {
     std::ostringstream oss;
+    if (is_natural) oss << "NATURAL ";
     switch (type) {
         case JoinType::INNER: oss << "INNER JOIN "; break;
         case JoinType::LEFT: oss << "LEFT JOIN "; break;
@@ -282,7 +288,9 @@ std::string JoinClause::toSql() const {
     if (!table.alias.empty()) {
         oss << " AS " << quoteIdentIfNeeded(table.alias);
     }
-    oss << " ON " << on_expr->toSql();
+    if (on_expr) {
+        oss << " ON " << on_expr->toSql();
+    }
     return oss.str();
 }
 
